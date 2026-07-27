@@ -1,0 +1,56 @@
+# PEP 517/518 build backend. Required so PEP 621 [project] metadata below is
+# honored: with this table absent, pip falls back to setuptools.build_meta:__legacy__
+# plus whatever setuptools the host has. On Ubuntu 22.04 stock (setuptools 59.6,
+# pre-PEP 621) that silently builds an UNKNOWN-0.0.0 wheel and drops every
+# [project.dependencies] entry. Pinning setuptools>=61 forces a backend that
+# actually parses [project].
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ldjy-retargeting"
+version = "0.1.0"
+description = "LDJY hand pose retargeting with adaptive analytical optimization"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "mediapipe==0.10.21",
+    "numpy>=1.21.0",
+    "nlopt",
+    "opencv-python",
+    "pin>=3.8.0",
+    "pyyaml",
+    "scipy>=1.11.0",
+]
+
+[project.optional-dependencies]
+realsense = [
+    "pyrealsense2",
+]
+zed = [
+    "pyzed",
+]
+tuning = [
+    "mujoco>=3.6",
+]
+gui = [
+    "PySide6-Essentials>=6.8",
+]
+
+[tool.setuptools.packages.find]
+include = ["ldjy_retargeting*"]
+
+# ponytail: MediaPipe 0.10.21 is the last release with solutions.hands; it runs
+# with NumPy 2, but its stale metadata says NumPy < 2. Migrate camera inputs to
+# the MediaPipe Tasks API when its model-asset lifecycle is implemented.
+[tool.uv]
+override-dependencies = ["numpy>=2"]
+
+[tool.setuptools.package-data]
+"ldjy_retargeting" = [
+    "assets/robots/ldjy_hand/**/*.urdf",
+    "assets/robots/ldjy_hand/**/*.xml",
+    "assets/robots/ldjy_hand/**/*.stl",
+]

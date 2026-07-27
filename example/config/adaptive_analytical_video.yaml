@@ -1,0 +1,72 @@
+optimizer:
+  type: AdaptiveOptimizerAnalytical
+retarget:
+  huber_delta: 2.0
+  huber_delta_dir: 0.5
+  norm_delta: 0.06
+  thumb_skip_pip: false
+  w_hyper: 0.0
+  w_couple: 0.0
+  w_pos: 1.0
+  w_dir: 10.0
+  scaling: 1.0
+  project_tip_dir: false
+  w_full_hand: 1.0
+  segment_scaling:
+    thumb:
+    - 0.7635572731923778
+    - 0.8276267406154784
+    - 0.9281743243625591
+    index:
+    - 1.0523676920692953
+    - 1.1028977408139824
+    - 1.1359712860384823
+    middle:
+    - 1.0025244602988468
+    - 1.0271766275534817
+    - 1.0628248960317797
+    ring:
+    - 0.9872539841475818
+    - 1.0227322833838237
+    - 1.0575174060623795
+    pinky:
+    - 0.8236297066914527
+    - 0.9358579787436957
+    - 1.064625184483189
+  pinch_thresholds:
+    index:
+      d1: 2.0
+      d2: 5.0
+    middle:
+      d1: 2.0
+      d2: 5.0
+    ring:
+      d1: 2.0
+      d2: 5.0
+    pinky:
+      d1: 2.0
+      d2: 5.0
+  lp_alpha: 0.15
+  mediapipe_rotation:
+    x: 0.0
+    y: 0.0
+    z: 0.0
+  soft_min: 0.0
+  couple_ratio: 0.7
+  wrist_offset_cm:
+  - 0.0
+  - 0.0
+  - 0.0
+  thumb_offset_cm:
+  - 0.0
+  - 0.0
+  - 0.0
+video_input:
+  z_scale: 2.5
+  correct_segments: true
+  reference_wrist_to_mid_mcp: 0.09
+render:
+  camera:
+    azimuth: 135
+    elevation: -20
+    distance: 0.5

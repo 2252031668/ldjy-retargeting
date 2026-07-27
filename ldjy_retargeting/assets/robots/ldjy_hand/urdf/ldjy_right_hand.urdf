@@ -1,0 +1,641 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="ldjy_right_hand">
+  <link name="right_palm">
+    <inertial>
+      <origin xyz="-0.00258898503754 -0.00264137502434 0.0187571489173" rpy="-1.55785536848 -1.21888601881 0.061158086048" />
+      <mass value="0.327043887096" />
+      <inertia ixx="0.000145648149989" ixy="0" ixz="0" iyy="0.000229763651032" iyz="0" izz="0.000319022489189" />
+    </inertial>
+    <visual name="palm_visual">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/palm.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="palm_visual_mesh_collision">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/palm.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_finger1_link1">
+    <inertial>
+      <origin xyz="-0.00539800585554 0.0185546789589 0.00326581995654" rpy="0.159062919592 0.0760465008651 -0.407220404968" />
+      <mass value="0.0245754608275" />
+      <inertia ixx="1.64762895252e-06" ixy="0" ixz="0" iyy="2.5439129794e-06" iyz="0" izz="3.17503074395e-06" />
+    </inertial>
+    <visual name="finger1_link1_visual">
+      <origin xyz="-0.00276461718212 -0.0495 -0.0233" rpy="-1.57079632679 -1.57079632679 0" />
+      <geometry>
+        <mesh filename="../meshes/finger1_link1.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger1_link1_visual_mesh_collision">
+      <origin xyz="-0.00276461718212 -0.0495 -0.0233" rpy="-1.57079632679 -1.57079632679 0" />
+      <geometry>
+        <mesh filename="../meshes/finger1_link1.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger1_joint1" type="revolute">
+    <parent link="right_palm" />
+    <child link="right_finger1_link1" />
+    <origin xyz="0.0233 0.00276461718212 0.0495" rpy="1.57079632679 0 1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.37" upper="0.37" effort="0.1822" velocity="10" />
+  </joint>
+  <link name="right_finger1_link2">
+    <inertial>
+      <origin xyz="-0.000469733542462 -0.000649088480012 0.0209860621889" rpy="-0.507695110732 -1.53461567196 -1.05713873549" />
+      <mass value="0.0199825650251" />
+      <inertia ixx="8.92515677372e-07" ixy="0" ixz="0" iyy="2.3672508894e-06" iyz="0" izz="2.48818993351e-06" />
+    </inertial>
+    <visual name="finger1_link2_visual">
+      <origin xyz="-0.0152342859465 0.01465 -0.074306081491" rpy="0 -0.168481144138 0" />
+      <geometry>
+        <mesh filename="../meshes/finger1_link2.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger1_link2_visual_mesh_collision">
+      <origin xyz="-0.0152342859465 0.01465 -0.074306081491" rpy="0 -0.168481144138 0" />
+      <geometry>
+        <mesh filename="../meshes/finger1_link2.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger1_joint2" type="revolute">
+    <parent link="right_finger1_link1" />
+    <child link="right_finger1_link2" />
+    <origin xyz="-0.0174146171861 0.0211993873 0.00417860713613" rpy="0 -1.40231518266 -1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.5604" effort="0.6188" velocity="10" />
+  </joint>
+  <link name="right_finger1_link3">
+    <inertial>
+      <origin xyz="-0.000469733539237 -0.000649088480338 0.0209860621605" rpy="-0.507695110733 -1.53461567196 -1.05713873549" />
+      <mass value="0.0199825650251" />
+      <inertia ixx="8.92515677372e-07" ixy="0" ixz="0" iyy="2.3672508894e-06" iyz="0" izz="2.48818993351e-06" />
+    </inertial>
+    <visual name="finger1_link3_visual">
+      <origin xyz="-0.0152342859432 0.01563627146 -0.106791112974" rpy="0 -0.168481144138 0" />
+      <geometry>
+        <mesh filename="../meshes/finger1_link3.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger1_link3_visual_mesh_collision">
+      <origin xyz="-0.0152342859432 0.01563627146 -0.106791112974" rpy="0 -0.168481144138 0" />
+      <geometry>
+        <mesh filename="../meshes/finger1_link3.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger1_joint3" type="revolute">
+    <parent link="right_finger1_link2" />
+    <child link="right_finger1_link3" />
+    <origin xyz="0 -0.0009862714603 0.032485031453" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.4777" upper="1.5485" effort="0.2251" velocity="10" />
+  </joint>
+  <link name="right_finger1_link4">
+    <inertial>
+      <origin xyz="-0.000458009932021 -0.00052860543942 0.0141481206598" rpy="-2.87041063322 1.54565781178 1.84203348469" />
+      <mass value="0.0106908835916" />
+      <inertia ixx="5.07636173712e-07" ixy="0" ixz="0" iyy="7.78737677777e-07" iyz="0" izz="9.67708066857e-07" />
+    </inertial>
+    <visual name="finger1_link4_visual">
+      <origin xyz="-0.0152342859334 0.01662254292 -0.139276144435" rpy="0 -0.168481144138 0" />
+      <geometry>
+        <mesh filename="../meshes/finger1_link4.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger1_link4_visual_mesh_collision">
+      <origin xyz="-0.0152342859334 0.01662254292 -0.139276144435" rpy="0 -0.168481144138 0" />
+      <geometry>
+        <mesh filename="../meshes/finger1_link4.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger1_joint4" type="revolute">
+    <parent link="right_finger1_link3" />
+    <child link="right_finger1_link4" />
+    <origin xyz="0 -0.0009862714603 0.032485031453" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.4683" upper="1.5753" effort="0.217" velocity="10" />
+  </joint>
+  <link name="right_finger2_link1">
+    <inertial>
+      <origin xyz="-0.0053980058557 0.0188352337656 -0.000419118423408" rpy="-0.0211608616862 -0.00258059968253 -0.413862148311" />
+      <mass value="0.0245754608275" />
+      <inertia ixx="1.64762895252e-06" ixy="0" ixz="0" iyy="2.5439129794e-06" iyz="0" izz="3.17503074395e-06" />
+    </inertial>
+    <visual name="finger2_link1_visual">
+      <origin xyz="-0.00276461718212 -0.0545 0" rpy="-1.57079632679 -1.57079632679 0" />
+      <geometry>
+        <mesh filename="../meshes/finger2_link1.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger2_link1_visual_mesh_collision">
+      <origin xyz="-0.00276461718212 -0.0545 0" rpy="-1.57079632679 -1.57079632679 0" />
+      <geometry>
+        <mesh filename="../meshes/finger2_link1.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger2_joint1" type="revolute">
+    <parent link="right_palm" />
+    <child link="right_finger2_link1" />
+    <origin xyz="0 0.00276461718212 0.0545" rpy="1.57079632679 0 1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.37" upper="0.37" effort="0.1827" velocity="10" />
+  </joint>
+  <link name="right_finger2_link2">
+    <inertial>
+      <origin xyz="-0.000469733540463 -0.000597166517537 0.0209876038232" rpy="-0.543414050129 -1.53674873164 -1.02144178961" />
+      <mass value="0.0199825650251" />
+      <inertia ixx="8.92515677372e-07" ixy="0" ixz="0" iyy="2.3672508894e-06" iyz="0" izz="2.48818993351e-06" />
+    </inertial>
+    <visual name="finger2_link2_visual">
+      <origin xyz="-0.00209004030895 0.01465 -0.0760785550709" rpy="0 0.0279930709772 0" />
+      <geometry>
+        <mesh filename="../meshes/finger2_link2.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger2_link2_visual_mesh_collision">
+      <origin xyz="-0.00209004030895 0.01465 -0.0760785550709" rpy="0 0.0279930709772 0" />
+      <geometry>
+        <mesh filename="../meshes/finger2_link2.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger2_joint2" type="revolute">
+    <parent link="right_finger2_link1" />
+    <child link="right_finger2_link2" />
+    <origin xyz="-0.0174146171861 0.021607247988 -4.01727912852e-05" rpy="3.14159265359 -1.54280325582 1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.5516" effort="0.6494" velocity="10" />
+  </joint>
+  <link name="right_finger2_link3">
+    <inertial>
+      <origin xyz="-0.000469733542039 -0.000597166522472 0.0209876037817" rpy="-0.543414050129 -1.53674873164 -1.02144178961" />
+      <mass value="0.0199825650251" />
+      <inertia ixx="8.92515677372e-07" ixy="0" ixz="0" iyy="2.3672508894e-06" iyz="0" izz="2.48818993351e-06" />
+    </inertial>
+    <visual name="finger2_link3_visual">
+      <origin xyz="-0.00209004031041 0.01555589976 -0.108565927207" rpy="0 0.0279930709772 0" />
+      <geometry>
+        <mesh filename="../meshes/finger2_link3.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger2_link3_visual_mesh_collision">
+      <origin xyz="-0.00209004031041 0.01555589976 -0.108565927207" rpy="0 0.0279930709772 0" />
+      <geometry>
+        <mesh filename="../meshes/finger2_link3.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger2_joint3" type="revolute">
+    <parent link="right_finger2_link2" />
+    <child link="right_finger2_link3" />
+    <origin xyz="0 -0.0009058997649 0.0324873720965" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.4739" upper="1.5512" effort="0.2078" velocity="10" />
+  </joint>
+  <link name="right_finger2_link4">
+    <inertial>
+      <origin xyz="-0.000458009941755 -0.000493601061427 0.0141493852141" rpy="-2.84128646667 1.54803173593 1.8711493194" />
+      <mass value="0.0106908835916" />
+      <inertia ixx="5.07636173712e-07" ixy="0" ixz="0" iyy="7.78737677777e-07" iyz="0" izz="9.67708066857e-07" />
+    </inertial>
+    <visual name="finger2_link4_visual">
+      <origin xyz="-0.00209004030751 0.01646179953 -0.141053299224" rpy="0 0.0279930709772 0" />
+      <geometry>
+        <mesh filename="../meshes/finger2_link4.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger2_link4_visual_mesh_collision">
+      <origin xyz="-0.00209004030751 0.01646179953 -0.141053299224" rpy="0 0.0279930709772 0" />
+      <geometry>
+        <mesh filename="../meshes/finger2_link4.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger2_joint4" type="revolute">
+    <parent link="right_finger2_link3" />
+    <child link="right_finger2_link4" />
+    <origin xyz="0 -0.0009058997649 0.0324873720965" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.4684" upper="1.5745" effort="0.2018" velocity="10" />
+  </joint>
+  <link name="right_finger3_link1">
+    <inertial>
+      <origin xyz="-0.00539800585577 0.0185838638218 -0.00309543158731" rpy="-0.152070027372 -0.0598224825057 -0.409770731132" />
+      <mass value="0.0245754608275" />
+      <inertia ixx="1.64762895252e-06" ixy="0" ixz="0" iyy="2.5439129794e-06" iyz="0" izz="3.17503074395e-06" />
+    </inertial>
+    <visual name="finger3_link1_visual">
+      <origin xyz="-0.00276461718212 -0.0445 0.0233" rpy="-1.57079632679 -1.57079632679 0" />
+      <geometry>
+        <mesh filename="../meshes/finger3_link1.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger3_link1_visual_mesh_collision">
+      <origin xyz="-0.00276461718212 -0.0445 0.0233" rpy="-1.57079632679 -1.57079632679 0" />
+      <geometry>
+        <mesh filename="../meshes/finger3_link1.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger3_joint1" type="revolute">
+    <parent link="right_palm" />
+    <child link="right_finger3_link1" />
+    <origin xyz="-0.0233 0.00276461718212 0.0445" rpy="1.57079632679 0 1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.37" upper="0.37" effort="0.1832" velocity="10" />
+  </joint>
+  <link name="right_finger3_link2">
+    <inertial>
+      <origin xyz="-0.000469733543401 0.000291381541176 0.0209940758082" rpy="-0.934663510879 1.54860690271 -2.49989553469" />
+      <mass value="0.0199825650251" />
+      <inertia ixx="8.92515677372e-07" ixy="0" ixz="0" iyy="2.3672508894e-06" iyz="0" izz="2.48818993351e-06" />
+    </inertial>
+    <visual name="finger3_link2_visual">
+      <origin xyz="0.0148328771148 0.01465 -0.0694126373022" rpy="0 0.170795208928 0" />
+      <geometry>
+        <mesh filename="../meshes/finger3_link2.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger3_link2_visual_mesh_collision">
+      <origin xyz="0.0148328771148 0.01465 -0.0694126373022" rpy="0 0.170795208928 0" />
+      <geometry>
+        <mesh filename="../meshes/finger3_link2.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger3_joint2" type="revolute">
+    <parent link="right_finger3_link1" />
+    <child link="right_finger3_link2" />
+    <origin xyz="-0.0174146171861 0.0213815924714 -0.00311484874629" rpy="3.14159265359 -1.40000111787 1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.5585" effort="0.6389" velocity="10" />
+  </joint>
+  <link name="right_finger3_link3">
+    <inertial>
+      <origin xyz="-0.000469733546156 0.000291381541434 0.0209940758005" rpy="-0.93466351088 1.54860690271 -2.49989553469" />
+      <mass value="0.0199825650251" />
+      <inertia ixx="8.92515677372e-07" ixy="0" ixz="0" iyy="2.3672508894e-06" iyz="0" izz="2.48818993351e-06" />
+    </inertial>
+    <visual name="finger3_link3_visual">
+      <origin xyz="0.0148328771137 0.01418050482 -0.101909245968" rpy="0 0.170795208928 0" />
+      <geometry>
+        <mesh filename="../meshes/finger3_link3.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger3_link3_visual_mesh_collision">
+      <origin xyz="0.0148328771137 0.01418050482 -0.101909245968" rpy="0 0.170795208928 0" />
+      <geometry>
+        <mesh filename="../meshes/finger3_link3.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger3_joint3" type="revolute">
+    <parent link="right_finger3_link2" />
+    <child link="right_finger3_link3" />
+    <origin xyz="-1.59763251568e-12 0.0004694951803 0.0324966086564" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.4765" upper="1.5487" effort="0.2249" velocity="10" />
+  </joint>
+  <link name="right_finger3_link4">
+    <inertial>
+      <origin xyz="-0.000458009952786 0.000105520175387 0.0141575989417" rpy="-2.8253825535 -1.54914434417 1.25449051027" />
+      <mass value="0.0106908835916" />
+      <inertia ixx="5.07636173712e-07" ixy="0" ixz="0" iyy="7.78737677777e-07" iyz="0" izz="9.67708066857e-07" />
+    </inertial>
+    <visual name="finger3_link4_visual">
+      <origin xyz="0.0148328771109 0.01371100964 -0.134405854644" rpy="0 0.170795208928 0" />
+      <geometry>
+        <mesh filename="../meshes/finger3_link4.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger3_link4_visual_mesh_collision">
+      <origin xyz="0.0148328771109 0.01371100964 -0.134405854644" rpy="0 0.170795208928 0" />
+      <geometry>
+        <mesh filename="../meshes/finger3_link4.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger3_joint4" type="revolute">
+    <parent link="right_finger3_link3" />
+    <child link="right_finger3_link4" />
+    <origin xyz="-1.59771293699e-12 0.0004694951803 0.0324966086564" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.4777" upper="1.5634" effort="0.2044" velocity="10" />
+  </joint>
+  <link name="right_thumb_link1">
+    <inertial>
+      <origin xyz="-0.00739845994701 -0.00214205626519 -0.00162308875269" rpy="-0.851165375941 0.20788957612 -0.253447670137" />
+      <mass value="0.00703750838111" />
+      <inertia ixx="3.51540624934e-07" ixy="0" ixz="0" iyy="8.49190524665e-07" iyz="0" izz="8.86279616798e-07" />
+    </inertial>
+    <visual name="thumb_link1_visual">
+      <origin xyz="-0.00130620327742 0.0084 -0.0233" rpy="-1.57079632679 -1.57079632679 0" />
+      <geometry>
+        <mesh filename="../meshes/thumb_link1.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="thumb_link1_visual_mesh_collision">
+      <origin xyz="-0.00130620327742 0.0084 -0.0233" rpy="-1.57079632679 -1.57079632679 0" />
+      <geometry>
+        <mesh filename="../meshes/thumb_link1.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_thumb_joint1" type="revolute">
+    <parent link="right_palm" />
+    <child link="right_thumb_link1" />
+    <origin xyz="0.0233 0.00130620327742 -0.0084" rpy="1.57079632679 0 1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.1387" upper="0.9324" effort="0.4259" velocity="10" />
+  </joint>
+  <link name="right_thumb_link2">
+    <inertial>
+      <origin xyz="0.000587968137923 -0.000389719569237 0.0146423224828" rpy="2.07467148297 -1.53922946414 -2.06520029906" />
+      <mass value="0.0243776114362" />
+      <inertia ixx="1.0993762067e-06" ixy="0" ixz="0" iyy="3.73663490369e-06" iyz="0" izz="3.80559390703e-06" />
+    </inertial>
+    <visual name="thumb_link2_visual">
+      <origin xyz="-0.0232471192536 0.01955 -0.00715566593719" rpy="0 -0.639098067226 0" />
+      <geometry>
+        <mesh filename="../meshes/thumb_link2.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="thumb_link2_visual_mesh_collision">
+      <origin xyz="-0.0232471192536 0.01955 -0.00715566593719" rpy="0 -0.639098067226 0" />
+      <geometry>
+        <mesh filename="../meshes/thumb_link2.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_thumb_joint2" type="revolute">
+    <parent link="right_thumb_link1" />
+    <child link="right_thumb_link2" />
+    <origin xyz="-0.0208562032814 0.000277131029299 -0.000372917575877" rpy="0 -0.931698259568 -1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.6033" effort="0.4452" velocity="10" />
+  </joint>
+  <link name="right_thumb_link3">
+    <inertial>
+      <origin xyz="-0.000469733540117 -0.0114659256044 0.000934096697507" rpy="-0.00427372229828 -0.0790746642033 -1.58862705509" />
+      <mass value="0.0199825650251" />
+      <inertia ixx="8.92515677372e-07" ixy="0" ixz="0" iyy="2.3672508894e-06" iyz="0" izz="2.48818993351e-06" />
+    </inertial>
+    <visual name="thumb_link3_visual">
+      <origin xyz="0.0187490610304 0.0462709644763 0.0237117364477" rpy="0 0.931698259612 -1.53913451988" />
+      <geometry>
+        <mesh filename="../meshes/thumb_link3.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="thumb_link3_visual_mesh_collision">
+      <origin xyz="0.0187490610304 0.0462709644763 0.0237117364477" rpy="0 0.931698259612 -1.53913451988" />
+      <geometry>
+        <mesh filename="../meshes/thumb_link3.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_thumb_joint3" type="revolute">
+    <parent link="right_thumb_link2" />
+    <child link="right_thumb_link3" />
+    <origin xyz="0.000464617178104 -0.000654441707232 0.0384985778798" rpy="-1.57079632684 -0.0316618069101 1.5707963268" />
+    <axis xyz="1 0 0" />
+    <limit lower="-1.5623" upper="0.4642" effort="0.1888" velocity="10" />
+  </joint>
+  <link name="right_thumb_link4">
+    <inertial>
+      <origin xyz="-0.000463166605884 -0.0144249894803 0.00292504570256" rpy="-0.00495627251018 -0.19788148764 -1.57847323273" />
+      <mass value="0.0244634948028" />
+      <inertia ixx="1.03116102218e-06" ixy="0" ixz="0" iyy="3.665999754e-06" iyz="0" izz="3.77700963222e-06" />
+    </inertial>
+    <visual name="thumb_link4_visual">
+      <origin xyz="0.0187490610233 0.0786663678323 0.0211063878021" rpy="0 0.931698259612 -1.53913451988" />
+      <geometry>
+        <mesh filename="../meshes/thumb_link4.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="thumb_link4_visual_mesh_collision">
+      <origin xyz="0.0187490610233 0.0786663678323 0.0211063878021" rpy="0 0.931698259612 -1.53913451988" />
+      <geometry>
+        <mesh filename="../meshes/thumb_link4.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_thumb_joint4" type="revolute">
+    <parent link="right_thumb_link3" />
+    <child link="right_thumb_link4" />
+    <origin xyz="0 -0.0323954033542 0.00260534863161" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-1.5568" upper="0.4699" effort="0.1468" velocity="10" />
+  </joint>
+  <link name="right_finger4_link1">
+    <inertial>
+      <origin xyz="0.0250109395286 0.000481911581987 0.020646619994" rpy="1.54761083479 -0.224761652885 0.00738332768062" />
+      <mass value="0.0349161633071" />
+      <inertia ixx="1.96689753583e-06" ixy="0" ixz="0" iyy="1.22412785094e-05" iyz="0" izz="1.26525110693e-05" />
+    </inertial>
+    <visual name="finger4_link1_visual">
+      <origin xyz="0.00906461713792 0.0136 -0.0233" rpy="0 1.57079630572 0" />
+      <geometry>
+        <mesh filename="../meshes/finger4_link1.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger4_link1_visual_mesh_collision">
+      <origin xyz="0.00906461713792 0.0136 -0.0233" rpy="0 1.57079630572 0" />
+      <geometry>
+        <mesh filename="../meshes/finger4_link1.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger4_joint1" type="revolute">
+    <parent link="right_palm" />
+    <child link="right_finger4_link1" />
+    <origin xyz="-0.0233000000119 -0.0136 -0.00906461713792" rpy="0 -1.57079630572 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="0" upper="1.570796327" effort="0.1798" velocity="10" />
+  </joint>
+  <link name="right_finger4_link2">
+    <inertial>
+      <origin xyz="-0.000105677985716 0.00482941272685 0.00988752975944" rpy="-2.46715724462 1.13717823912 -1.55660858977" />
+      <mass value="0.00639323066221" />
+      <inertia ixx="4.11450600512e-07" ixy="0" ixz="0" iyy="5.63192139534e-07" iyz="0" izz="5.64019378254e-07" />
+    </inertial>
+    <visual name="finger4_link2_visual">
+      <origin xyz="0.0137042843173 -0.046328831768 -0.04005" rpy="0 0 -1.5511856556" />
+      <geometry>
+        <mesh filename="../meshes/finger4_link2.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger4_link2_visual_mesh_collision">
+      <origin xyz="0.0137042843173 -0.046328831768 -0.04005" rpy="0 0 -1.5511856556" />
+      <geometry>
+        <mesh filename="../meshes/finger4_link2.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger4_joint2" type="revolute">
+    <parent link="right_finger4_link1" />
+    <child link="right_finger4_link2" />
+    <origin xyz="0.049114617142 0.000806832033059 0.0232886565071" rpy="1.57079632679 0.0196106711984 1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.3665191429" upper="0.3665191429" effort="0.6441" velocity="10" />
+  </joint>
+  <link name="right_finger4_link3">
+    <inertial>
+      <origin xyz="0.000305117915059 -0.000543425297801 0.0114910693808" rpy="-2.76039084205 1.52236362565 1.94671628606" />
+      <mass value="0.0199825650251" />
+      <inertia ixx="8.92515677372e-07" ixy="0" ixz="0" iyy="2.3672508894e-06" iyz="0" izz="2.48818993351e-06" />
+    </inertial>
+    <visual name="finger4_link3_visual">
+      <origin xyz="0.0259478140265 0.0134721920089 -0.0777688868398" rpy="0 0.427699186189 0.0178445841947" />
+      <geometry>
+        <mesh filename="../meshes/finger4_link3.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger4_link3_visual_mesh_collision">
+      <origin xyz="0.0259478140265 0.0134721920089 -0.0777688868398" rpy="0 0.427699186189 0.0178445841947" />
+      <geometry>
+        <mesh filename="../meshes/finger4_link3.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger4_joint3" type="revolute">
+    <parent link="right_finger4_link2" />
+    <child link="right_finger4_link3" />
+    <origin xyz="-0.000399999979958 0.00948765311732 0.019853071289" rpy="0.00813364996905 -0.427626613063 -1.57079632679" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.4768" upper="1.549" effort="0.2384" velocity="10" />
+  </joint>
+  <link name="right_finger4_link4">
+    <inertial>
+      <origin xyz="0.000463168881708 0.000173456123876 0.0147175448692" rpy="-0.487961747231 1.55493507582 -2.06527614413" />
+      <mass value="0.0244634948028" />
+      <inertia ixx="1.03116102218e-06" ixy="0" ixz="0" iyy="3.665999754e-06" iyz="0" izz="3.77700963222e-06" />
+    </inertial>
+    <visual name="finger4_link4_visual">
+      <origin xyz="0.026112431934 0.0149737716773 -0.110234179974" rpy="0 0.427699186189 0.0178445841947" />
+      <geometry>
+        <mesh filename="../meshes/finger4_link4.stl" />
+      </geometry>
+      <material name="cad_gray">
+        <color rgba="0.72 0.76 0.78 1" />
+      </material>
+    </visual>
+    <collision name="finger4_link4_visual_mesh_collision">
+      <origin xyz="0.026112431934 0.0149737716773 -0.110234179974" rpy="0 0.427699186189 0.0178445841947" />
+      <geometry>
+        <mesh filename="../meshes/finger4_link4.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="right_finger4_joint4" type="revolute">
+    <parent link="right_finger4_link3" />
+    <child link="right_finger4_link4" />
+    <origin xyz="-0.000164617907326 -0.00150157967432 0.0324652931341" rpy="0 0 0" />
+    <axis xyz="1 0 0" />
+    <limit lower="-0.4683" upper="1.5735" effort="0.1866" velocity="10" />
+  </joint>
+  <link name="right_finger1_tip" />
+  <joint name="right_finger1_tip_fixed" type="fixed">
+    <parent link="right_finger1_link4" />
+    <child link="right_finger1_tip" />
+    <origin xyz="-5.12946368656e-18 -0.000898255926846 0.029586045233" rpy="0 0 0" />
+  </joint>
+  <link name="right_finger2_tip" />
+  <joint name="right_finger2_tip_fixed" type="fixed">
+    <parent link="right_finger2_link4" />
+    <child link="right_finger2_tip" />
+    <origin xyz="3.22520490779e-19 -0.000825056643836 0.0295881765594" rpy="0 0 0" />
+  </joint>
+  <link name="right_finger3_tip" />
+  <joint name="right_finger3_tip_fixed" type="fixed">
+    <parent link="right_finger3_link4" />
+    <child link="right_finger3_tip" />
+    <origin xyz="-1.45513261078e-12 0.000427597164136 0.0295965928695" rpy="0 0 0" />
+  </joint>
+  <link name="right_thumb_tip" />
+  <joint name="right_thumb_tip_fixed" type="fixed">
+    <parent link="right_thumb_link4" />
+    <child link="right_thumb_tip" />
+    <origin xyz="3.00852510204e-18 -0.0399322083726 0.00321148415111" rpy="0 0 0" />
+  </joint>
+  <link name="right_finger4_tip" />
+  <joint name="right_finger4_tip_fixed" type="fixed">
+    <parent link="right_finger4_link4" />
+    <child link="right_finger4_tip" />
+    <origin xyz="-0.000202119138782 -0.00184365112833 0.0398611378018" rpy="0 0 0" />
+  </joint>
+  <link name="right_retarget_wrist" />
+  <joint name="right_retarget_wrist_fixed" type="fixed">
+    <parent link="right_retarget_wrist" />
+    <child link="right_palm" />
+    <origin xyz="-0.015 -0 0.03" rpy="0 0 1.57079632679" />
+  </joint>
+</robot>

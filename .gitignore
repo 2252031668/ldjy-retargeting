@@ -1,0 +1,27 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.DS_Store
+
+# Python build artifacts
+*.egg-info/
+dist/
+build/
+*.egg
+*.whl
+
+# Logs
+logs/
+MUJOCO_LOG.TXT
+
+# Temporary files
+*.tmp
+*.log
+
+# Local UI brainstorming artifacts
+.superpowers/
+
+# Per-user baseline created when the tuning GUI first saves a configuration.
+*.yaml.original.yaml
