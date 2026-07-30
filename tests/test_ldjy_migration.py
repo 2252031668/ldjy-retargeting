@@ -1,8 +1,12 @@
 from pathlib import Path
 import sys
-import tomllib
 import pickle
 import unittest
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 compatibility
+    import tomli as tomllib
 
 import numpy as np
 

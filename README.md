@@ -7,8 +7,8 @@
 
 ## 快速开始
 
-项目使用 `uv` 管理 Python 环境。USB 摄像头是默认实时输入设备，OpenCV
-设备索引默认是 `0`。
+项目使用 `uv` 管理固定的 Python 3.10 环境（见 `.python-version`），并默认使用
+清华 PyPI 镜像下载依赖。USB 摄像头是默认实时输入设备，OpenCV 设备索引默认是 `0`。
 
 ```bash
 uv sync --extra tuning
