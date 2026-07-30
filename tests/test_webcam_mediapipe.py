@@ -41,6 +41,8 @@ class WebcamMediaPipeTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--debug", result.stdout)
+        self.assertIn("--robot", result.stdout)
+        self.assertIn("openarm", result.stdout)
         self.assertNotIn("--tuning", result.stdout)
         self.assertNotIn("--viz-config", result.stdout)
 

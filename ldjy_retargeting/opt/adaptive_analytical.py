@@ -33,7 +33,6 @@ class AdaptiveOptimizerAnalytical(BaseOptimizer):
         self.huber_delta_dir = retarget_config.get('huber_delta_dir', 0.5)
         self.w_pos = retarget_config.get('w_pos', 1.0)
         self.w_dir = retarget_config.get('w_dir', 10.0)
-        self.scaling = retarget_config.get('scaling', 1.0)
         self.project_tip_dir = retarget_config.get('project_tip_dir', False)
 
         # FullHandVec parameters
@@ -161,7 +160,9 @@ class AdaptiveOptimizerAnalytical(BaseOptimizer):
         init_qpos = self._get_init_qpos(last_qpos)
 
         alphas = self._compute_pinch_alpha(mediapipe_keypoints)
-        target_tip_vectors = self._compute_tip_vectors(mediapipe_keypoints, self.scaling)
+        target_tip_vectors = self._compute_tip_vectors(
+            mediapipe_keypoints, self.segment_scaling[:, 2]
+        )
         target_tip_dirs = self._compute_tip_dirs(mediapipe_keypoints)
         target_full_hand_vectors = self._compute_full_hand_vectors(
             mediapipe_keypoints, self.segment_scaling
@@ -191,7 +192,9 @@ class AdaptiveOptimizerAnalytical(BaseOptimizer):
     ) -> float:
         """Compute cost for given joint angles."""
         alphas = self._compute_pinch_alpha(mediapipe_keypoints)
-        target_tip_vectors = self._compute_tip_vectors(mediapipe_keypoints, self.scaling)
+        target_tip_vectors = self._compute_tip_vectors(
+            mediapipe_keypoints, self.segment_scaling[:, 2]
+        )
         target_tip_dirs = self._compute_tip_dirs(mediapipe_keypoints)
         target_full_hand_vectors = self._compute_full_hand_vectors(
             mediapipe_keypoints, self.segment_scaling

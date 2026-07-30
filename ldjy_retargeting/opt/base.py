@@ -454,20 +454,34 @@ class BaseOptimizer(ABC):
         self.last_qpos = qpos.copy()
         return qpos
 
-    def _compute_tip_vectors(self, keypoints: np.ndarray, scaling: float = 1.0) -> np.ndarray:
+    def _compute_tip_vectors(self, keypoints: np.ndarray, scaling: float | np.ndarray = 1.0) -> np.ndarray:
         """Compute wrist->tip vectors.
 
         Args:
             keypoints: (21, 3) MediaPipe keypoints in meters
-            scaling: Global scaling factor
+            scaling: Scalar or per-finger scaling factors with shape (5,)
 
         Returns:
             vectors: (5, 3) tip vectors in cm
         """
         wrist = keypoints[self.MP_ORIGIN_IDX]
+        scaling_array = np.asarray(scaling, dtype=np.float64)
+        if scaling_array.ndim == 1:
+            if scaling_array.shape != (len(self.MP_TIP_INDICES),):
+                raise ValueError(
+                    f"Per-finger tip scaling must have shape ({len(self.MP_TIP_INDICES)},), "
+                    f"got {scaling_array.shape}"
+                )
+            scaling_array = scaling_array[:, None]
+        elif scaling_array.ndim != 0:
+            raise ValueError(
+                f"Tip scaling must be a scalar or a ({len(self.MP_TIP_INDICES)},) array, "
+                f"got {scaling_array.shape}"
+            )
+
         vectors = np.array([
             keypoints[idx] - wrist for idx in self.MP_TIP_INDICES
-        ]) * scaling * M_TO_CM
+        ]) * scaling_array * M_TO_CM
         return vectors.astype(np.float64)
 
     def _compute_tip_dirs(self, keypoints: np.ndarray) -> np.ndarray:

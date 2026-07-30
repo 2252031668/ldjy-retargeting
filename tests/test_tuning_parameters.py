@@ -24,6 +24,7 @@ class TuningParameterTests(unittest.TestCase):
             sum(path.startswith("retarget.segment_scaling.") for path in paths),
             15,
         )
+        self.assertNotIn("retarget.scaling", paths)
         self.assertIn("retarget.segment_scaling.index.tip", paths)
         index_tip = next(spec for spec in parameter_specs()
                          if spec.path == "retarget.segment_scaling.index.tip")

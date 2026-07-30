@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any
 
+from ldjy_retargeting.retarget_tip_frames import FINGERS as ASSET_FINGERS, normalize_tip_offsets
+
 
 FINGERS = ("thumb", "index", "middle", "ring", "pinky")
 SEGMENTS = ("pip", "dip", "tip")
@@ -38,7 +40,6 @@ _DEFAULT_RETARGET = {
     "w_pos": 1.0,
     "w_dir": 10.0,
     "w_full_hand": 1.0,
-    "scaling": 1.0,
     "project_tip_dir": False,
     "lp_alpha": 0.15,
     "mediapipe_rotation": {"x": 0.0, "y": 0.0, "z": 0.0},
@@ -60,6 +61,9 @@ _DEFAULT_SEGMENT_SCALING = {
 _DEFAULT_PINCH_THRESHOLDS = {
     finger: {"d1": 2.0, "d2": 5.0}
     for finger in FINGERS[1:]
+}
+_DEFAULT_TIP_OFFSETS = {
+    finger: {"axis_mm": 0.0, "surface_mm": 0.0} for finger in ASSET_FINGERS
 }
 
 
@@ -89,8 +93,6 @@ def parameter_specs() -> tuple[ParameterSpec, ...]:
               "输入人手 wrist 到中指 MCP 的归一化长度，单位米。", "增大后整只目标手的尺度变大。", minimum=0.04, maximum=0.16, step=0.001),
         _spec("video_input.correct_segments", "人手与相机尺度", "correct_segments",
               "是否用标准人体比例修正 MediaPipe 的各指骨段。", "关闭后直接使用检测到的骨段比例。", bool),
-        _spec("retarget.scaling", "15 条目标向量", "scaling",
-              "五根 wrist 到指尖位置目标的全局缩放。", "增大后指尖位置目标整体远离 wrist。", minimum=0.5, maximum=1.5, step=0.01),
     ]
     finger_labels = {"thumb": "拇指", "index": "食指", "middle": "中指", "ring": "无名指", "pinky": "小拇指"}
     segment_labels = {"pip": "PIP", "dip": "DIP", "tip": "TIP"}
@@ -155,6 +157,14 @@ def parameter_specs() -> tuple[ParameterSpec, ...]:
         _spec("retarget.couple_ratio", "高级机械约束", "couple_ratio",
               "DIP 相对 PIP 的目标耦合比例。", "增大后 DIP 目标弯曲比例更高。", minimum=0.0, maximum=1.5, step=0.01),
     ])
+    asset_labels = {"thumb": "拇指", "finger1": "食指", "finger2": "中指", "finger3": "无名指", "finger4": "小拇指"}
+    for finger in ASSET_FINGERS:
+        specs.extend([
+            _spec(f"tip_offsets.{finger}.axis_mm", "末端任务点", f"{asset_labels[finger]} 纵向",
+                  "沿 PIP 到 DIP 的末节射线移动虚拟 tip，单位毫米。", "正值朝指尖，负值朝指根。", minimum=-15.0, maximum=15.0, step=0.1),
+            _spec(f"tip_offsets.{finger}.surface_mm", "末端任务点", f"{asset_labels[finger]} 厚度",
+                  "沿指甲盖到指肚方向移动虚拟 tip，单位毫米。", "正值按模型局部指甲-指肚轴移动。", minimum=-15.0, maximum=15.0, step=0.1),
+        ])
     return tuple(specs)
 
 
@@ -235,6 +245,9 @@ def normalize_runtime_config(config: dict[str, Any]) -> dict[str, Any]:
     retarget = config.setdefault("retarget", {})
     if not isinstance(retarget, dict):
         raise ValueError("retarget must be a mapping")
+    # Legacy global TipPos scaling conflicts with the calibrated TIP entry in
+    # segment_scaling. Drop it on load so a subsequent save migrates the YAML.
+    retarget.pop("scaling", None)
     _merge_defaults(retarget, _DEFAULT_RETARGET)
     segment_scaling = retarget.setdefault("segment_scaling", {})
     if not isinstance(segment_scaling, dict):
@@ -248,6 +261,11 @@ def normalize_runtime_config(config: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(video_input, dict):
         raise ValueError("video_input must be a mapping")
     _merge_defaults(video_input, _DEFAULT_VIDEO_INPUT)
+    tip_offsets = config.setdefault("tip_offsets", {})
+    if not isinstance(tip_offsets, dict):
+        raise ValueError("tip_offsets must be a mapping")
+    _merge_defaults(tip_offsets, _DEFAULT_TIP_OFFSETS)
+    config["tip_offsets"] = normalize_tip_offsets(config["tip_offsets"])
     return config
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import mujoco
 import numpy as np
 
@@ -18,6 +20,9 @@ FINGERS = (
 ACTUAL_JOINT_RGBA = np.array((1.0, 0.85, 0.1, 1.0))
 ACTUAL_LINK_RGBA = np.array((0.1, 0.85, 0.9, 0.95))
 TARGET_RGBA = np.array((0.25, 1.0, 0.25, 0.95))
+PINCH_TARGET_RGBA = np.array((1.0, 0.2, 0.2, 0.95))
+PINCH_VISUAL_ALPHA = 0.05
+TIP_DIR_DISPLAY_LENGTH = 0.015
 IDENTITY_MAT = np.eye(3).ravel()
 
 
@@ -42,6 +47,14 @@ def _hand_prefix(model: mujoco.MjModel) -> str:
         if mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, f"{prefix}_palm") >= 0:
             return prefix
     raise ValueError("Model is missing an LDJY palm body")
+
+
+def _tip_site_id(model: mujoco.MjModel, prefix: str, finger: str) -> int:
+    for name in (f"{prefix}_{finger}_link4_tip", f"{prefix}_{finger}_tip_site"):
+        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
+        if site_id >= 0:
+            return site_id
+    raise ValueError(f"Model is missing a tip site for {prefix}_{finger}")
 
 
 def _add_sphere(scene, position, label, rgba, radius):
@@ -83,8 +96,7 @@ def _add_link(scene, start, end, label, rgba, width):
     scene.ngeom += 1
 
 
-def _draw_hand(model, data, scene, joint_rgba, link_rgba, label_prefix, radius, width):
-    prefix = _hand_prefix(model)
+def _draw_hand(model, data, scene, prefix, joint_rgba, link_rgba, label_prefix, radius, width):
     wrist_id = _object_id(model, mujoco.mjtObj.mjOBJ_BODY, f"{prefix}_retarget_wrist")
     wrist = data.xpos[wrist_id].copy()
     _add_sphere(scene, wrist, f"{label_prefix} wrist", joint_rgba, radius)
@@ -100,12 +112,19 @@ def _draw_hand(model, data, scene, joint_rgba, link_rgba, label_prefix, radius, 
             _add_sphere(scene, position, f"{label_prefix} {short_name} J{number}", joint_rgba, radius)
             parent = position
 
-        site_id = _object_id(
-            model, mujoco.mjtObj.mjOBJ_SITE, f"{prefix}_{finger}_link4_tip"
-        )
+        site_id = _tip_site_id(model, prefix, finger)
         tip = data.site_xpos[site_id].copy()
         _add_link(scene, parent, tip, f"{label_prefix} {short_name}", link_rgba, width)
         _add_sphere(scene, tip, f"{label_prefix} {short_name} tip", joint_rgba, radius)
+
+
+@dataclass(frozen=True)
+class TargetSegment:
+    start: np.ndarray
+    end: np.ndarray
+    label: str
+    kind: str
+    show_start: bool = False
 
 
 def _active_target_segments(optimizer, mediapipe_keypoints, pinch_alphas):
@@ -120,29 +139,31 @@ def _active_target_segments(optimizer, mediapipe_keypoints, pinch_alphas):
         mediapipe_keypoints, optimizer.segment_scaling
     ) / M_TO_CM
     tip_vectors = optimizer._compute_tip_vectors(
-        mediapipe_keypoints, optimizer.scaling
+        mediapipe_keypoints, optimizer.segment_scaling[:, 2]
     ) / M_TO_CM
     tip_dirs = optimizer._compute_tip_dirs(mediapipe_keypoints)
-    dip_to_tip_length = np.linalg.norm(
-        mediapipe_keypoints[optimizer.MP_TIP_INDICES]
-        - mediapipe_keypoints[optimizer.MP_DIP_INDICES],
-        axis=1,
-    )
-
     segments = []
     origin = np.zeros(3, dtype=np.float64)
     for finger_index, alpha in enumerate(pinch_alphas):
-        if 1.0 - alpha > 0.01:
+        short_name = FINGERS[finger_index][1]
+        if alpha <= PINCH_VISUAL_ALPHA:
             for offset, name in ((0, "PIP"), (5, "DIP"), (10, "TIP")):
-                segments.append((origin, full_hand[offset + finger_index], f"Full {name}"))
-        if alpha > 0.01:
-            segments.append((origin, tip_vectors[finger_index], "TipPos"))
-            dip_target = full_hand[5 + finger_index]
+                segments.append(TargetSegment(
+                    origin, full_hand[offset + finger_index],
+                    f"Full {short_name} {name}", "full",
+                ))
+        else:
+            segments.append(TargetSegment(
+                origin, tip_vectors[finger_index], f"TipPos {short_name}", "pinch",
+            ))
+            tip_target = tip_vectors[finger_index]
             segments.append(
-                (
-                    dip_target,
-                    dip_target + tip_dirs[finger_index] * dip_to_tip_length[finger_index],
-                    "TipDir",
+                TargetSegment(
+                    tip_target - tip_dirs[finger_index] * TIP_DIR_DISPLAY_LENGTH,
+                    tip_target,
+                    f"TipDir {short_name}",
+                    "pinch",
+                    show_start=True,
                 )
             )
     return segments
@@ -151,34 +172,46 @@ def _active_target_segments(optimizer, mediapipe_keypoints, pinch_alphas):
 class DebugOverlay:
     """Draw physical pose and active adaptive target vectors."""
 
-    def __init__(self, model: mujoco.MjModel):
+    def __init__(
+        self,
+        model: mujoco.MjModel,
+        hand_side: str | None = None,
+        *,
+        show_skeleton: bool = True,
+        show_rays: bool = True,
+    ):
         self.model = model
+        self.hand_side = hand_side or _hand_prefix(model)
+        self.show_skeleton = show_skeleton
+        self.show_rays = show_rays
+        if self.hand_side not in {"left", "right"}:
+            raise ValueError(f"Unknown hand side {self.hand_side!r}")
 
     def draw(self, scene, actual_data, optimizer, mediapipe_keypoints, pinch_alphas) -> None:
         scene.ngeom = 0
-        _draw_hand(
-            self.model,
-            actual_data,
-            scene,
-            ACTUAL_JOINT_RGBA,
-            ACTUAL_LINK_RGBA,
-            "actual",
-            radius=0.0035,
-            width=0.0015,
-        )
-        prefix = _hand_prefix(self.model)
+        if self.show_skeleton:
+            _draw_hand(
+                self.model, actual_data, scene, self.hand_side,
+                ACTUAL_JOINT_RGBA, ACTUAL_LINK_RGBA, "actual",
+                radius=0.0035, width=0.0015,
+            )
+        if not self.show_rays:
+            return
         wrist_id = _object_id(
-            self.model, mujoco.mjtObj.mjOBJ_BODY, f"{prefix}_retarget_wrist"
+            self.model, mujoco.mjtObj.mjOBJ_BODY, f"{self.hand_side}_retarget_wrist"
         )
         wrist_pos = actual_data.xpos[wrist_id].copy()
         wrist_rot = actual_data.xmat[wrist_id].reshape(3, 3).copy()
-        for start, end, label in _active_target_segments(
+        for segment in _active_target_segments(
             optimizer, mediapipe_keypoints, pinch_alphas
         ):
-            world_start = start @ wrist_rot.T + wrist_pos
-            world_end = end @ wrist_rot.T + wrist_pos
-            _add_link(scene, world_start, world_end, label, TARGET_RGBA, width=0.00055)
-            _add_sphere(scene, world_end, label, TARGET_RGBA, radius=0.0018)
+            world_start = segment.start @ wrist_rot.T + wrist_pos
+            world_end = segment.end @ wrist_rot.T + wrist_pos
+            rgba = PINCH_TARGET_RGBA if segment.kind == "pinch" else TARGET_RGBA
+            _add_link(scene, world_start, world_end, segment.label, rgba, width=0.00055)
+            if segment.show_start:
+                _add_sphere(scene, world_start, segment.label, rgba, radius=0.0018)
+            _add_sphere(scene, world_end, segment.label, rgba, radius=0.0018)
 
 
 def format_joint_diagnostics(model, data, actuator_targets, joint_mode_labels, cost):

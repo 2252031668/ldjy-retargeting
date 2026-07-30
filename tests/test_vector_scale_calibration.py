@@ -66,7 +66,7 @@ class VectorScaleCalibrationTests(unittest.TestCase):
     def test_session_applies_all_fifteen_scales_atomically(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.yaml"
-            config_path.write_text("retarget:\n  scaling: 1.0\n", encoding="utf-8")
+            config_path.write_text("retarget: {}\n", encoding="utf-8")
             session = TuningSession(config_path)
 
             session.set_segment_scalings(np.full((5, 3), 1.12))
@@ -84,7 +84,7 @@ class VectorScaleCalibrationTests(unittest.TestCase):
     def test_session_does_not_partially_apply_invalid_scales(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = Path(temp_dir) / "config.yaml"
-            config_path.write_text("retarget:\n  scaling: 1.0\n", encoding="utf-8")
+            config_path.write_text("retarget: {}\n", encoding="utf-8")
             session = TuningSession(config_path)
             before = session.config
             invalid = np.ones((5, 3))
@@ -99,7 +99,7 @@ class VectorScaleCalibrationTests(unittest.TestCase):
         runtime = TuningRuntime(
             {
                 "optimizer": {"type": "AdaptiveOptimizerAnalytical"},
-                "retarget": {"scaling": 1.0},
+                "retarget": {},
             },
             hand_side="right",
         )

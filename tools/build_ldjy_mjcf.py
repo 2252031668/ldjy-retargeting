@@ -5,10 +5,22 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 
 import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation
+
+try:
+    from tools.ldjy_asset_frames import RIGHT_MANO_FROM_CAD
+except ModuleNotFoundError:
+    from ldjy_asset_frames import RIGHT_MANO_FROM_CAD
+from ldjy_retargeting.retarget_tip_frames import (
+    apply_offset,
+    load_tip_offsets,
+    normalize_tip_offsets,
+    task_frame_axes,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +28,8 @@ ASSET_DIR = ROOT / "ldjy_retargeting" / "assets" / "robots" / "ldjy_hand"
 URDF_DIR = ASSET_DIR / "urdf"
 MJCF_DIR = ASSET_DIR / "mjcf"
 FINGERS = ("finger1", "finger2", "finger3", "thumb", "finger4")
+CAD_NAIL_TO_PULP = np.array((0.0, 1.0, 0.0))
+MIRROR_X = np.diag((-1.0, 1.0, 1.0))
 MESH_COLLISION_BODIES = (
     "palm", "finger1_link4", "finger2_link4", "finger3_link4", "thumb_link4", "finger4_link4"
 )
@@ -50,10 +64,20 @@ def visual_transform(model: mujoco.MjModel, body_name: str) -> tuple[np.ndarray,
     return model.geom_pos[geom_id], Rotation.from_quat(quat[[1, 2, 3, 0]]).as_matrix()
 
 
-def distal_tip_positions(model: mujoco.MjModel, side: str) -> dict[str, np.ndarray]:
+def mano_nail_to_pulp(side: str) -> np.ndarray:
+    cad_direction = CAD_NAIL_TO_PULP if side == "right" else MIRROR_X @ CAD_NAIL_TO_PULP
+    return RIGHT_MANO_FROM_CAD @ cad_direction
+
+
+def distal_tip_positions(
+    model: mujoco.MjModel,
+    side: str,
+    offsets: Mapping[str, Mapping[str, float]] | None = None,
+) -> dict[str, np.ndarray]:
     """Return each fingertip mesh extremity in its link4 local coordinates."""
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
+    offsets = normalize_tip_offsets(load_tip_offsets() if offsets is None else offsets)
     positions = {}
     for finger in FINGERS:
         joint3 = mujoco.mj_name2id(
@@ -77,7 +101,20 @@ def distal_tip_positions(model: mujoco.MjModel, side: str) -> dict[str, np.ndarr
         )
         tip = end + direction * ((world_vertices - end) @ direction).max()
         body_id = model.jnt_bodyid[joint4]
-        positions[finger] = data.xmat[body_id].reshape(3, 3).T @ (tip - end)
+        base_position = data.xmat[body_id].reshape(3, 3).T @ (tip - end)
+        axis_local, surface_local = task_frame_axes(
+            model,
+            data,
+            finger,
+            side=side,
+            surface_reference_world=mano_nail_to_pulp(side),
+        )
+        positions[finger] = apply_offset(
+            base_position,
+            axis_local,
+            surface_local,
+            **offsets[finger],
+        )
     return positions
 
 
@@ -133,9 +170,14 @@ def add_collision_model(root: ET.Element, model: mujoco.MjModel, side: str) -> N
     ET.SubElement(contact, "exclude", {"body1": f"{side}_palm", "body2": f"{side}_finger4_link1"})
 
 
-def add_tip_sites(root: ET.Element, model: mujoco.MjModel, side: str) -> None:
+def add_tip_sites(
+    root: ET.Element,
+    model: mujoco.MjModel,
+    side: str,
+    offsets: Mapping[str, Mapping[str, float]] | None = None,
+) -> None:
     bodies = {body.attrib["name"]: body for body in root.findall(".//body")}
-    for finger, position in distal_tip_positions(model, side).items():
+    for finger, position in distal_tip_positions(model, side, offsets).items():
         link4 = bodies[f"{side}_{finger}_link4"]
         ET.SubElement(
             link4,
@@ -144,10 +186,16 @@ def add_tip_sites(root: ET.Element, model: mujoco.MjModel, side: str) -> None:
         )
 
 
-def build_model(side: str) -> Path:
+def build_model(
+    side: str,
+    *,
+    offsets: Mapping[str, Mapping[str, float]] | None = None,
+    urdf_dir: Path = URDF_DIR,
+    output_dir: Path = MJCF_DIR,
+) -> Path:
     if side not in ("right", "left"):
         raise ValueError(f"Unsupported side: {side}")
-    source = URDF_DIR / f"ldjy_{side}_hand.urdf"
+    source = urdf_dir / f"ldjy_{side}_hand.urdf"
     source_model = mujoco.MjModel.from_xml_path(str(source))
     with tempfile.NamedTemporaryFile(suffix=".xml") as temporary:
         mujoco.mj_saveLastXML(temporary.name, source_model)
@@ -159,7 +207,7 @@ def build_model(side: str) -> Path:
     for geom in root.findall(".//geom"):
         geom.attrib.update({"contype": "0", "conaffinity": "0", "group": "1", "density": "0"})
     add_collision_model(root, source_model, side)
-    add_tip_sites(root, source_model, side)
+    add_tip_sites(root, source_model, side, offsets)
 
     actuator = ET.SubElement(root, "actuator")
     for joint_id in range(source_model.njnt):
@@ -174,8 +222,8 @@ def build_model(side: str) -> Path:
             },
         )
     ET.indent(root, space="  ")
-    MJCF_DIR.mkdir(parents=True, exist_ok=True)
-    output = MJCF_DIR / f"ldjy_{side}_hand.xml"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output = output_dir / f"ldjy_{side}_hand.xml"
     ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
     return output
 

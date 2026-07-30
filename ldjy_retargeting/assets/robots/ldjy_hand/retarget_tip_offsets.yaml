@@ -1,0 +1,18 @@
+version: 1
+units: mm
+fingers:
+  thumb:
+    axis_mm: -9.6
+    surface_mm: 0.0
+  finger1:
+    axis_mm: -10.0
+    surface_mm: 0.0
+  finger2:
+    axis_mm: -10.0
+    surface_mm: 0.0
+  finger3:
+    axis_mm: -10.0
+    surface_mm: 0.0
+  finger4:
+    axis_mm: -10.0
+    surface_mm: 0.0

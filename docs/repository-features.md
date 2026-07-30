@@ -40,6 +40,10 @@
 显示当前 debug 叠加。其他输入设备只要实现可选的 `get_preview_frame()`，即可复用同一 GUI
 和 `(21, 3) -> Retargeter` 数据链路。
 
+调参 GUI 将尺度统一为 15 条 `segment_scaling`：每根手指的 `PIP / DIP / TIP` 位置比例。
+其中 `TIP` 比例同时供整手 FullHandVec 和捏合 TipPos 使用。MuJoCo debug 在整手模式显示
+绿色目标射线，在捏合模式对参与手指显示红色 TipPos 端点和终点锚定于该端点的 TipDir 箭头。
+
 ## LDJY 模型与关节映射
 
 LDJY 的左右 URDF 和 MJCF 都使用 `left_` 或 `right_` 前缀，例如

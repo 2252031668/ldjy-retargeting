@@ -24,6 +24,9 @@ uv run --no-sync \
   python example/tuning_gui.py --webcam --camera-index 0 --hand right
 ```
 
+GUI 相机预览按检测帧更新；独立 MuJoCo debug 窗口按 120 Hz 刷新，并以 2 ms 子步保持
+500 Hz 平均物理积分，因此手模型的物理时间与现实时间保持同步。
+
 不接相机时，可以使用仓库自带的 21 点回放数据验证完整链路：
 
 ```bash
@@ -35,7 +38,9 @@ uv run --no-sync python example/teleop_sim.py --play example/data/avp1.pkl --han
 - AdaptiveOptimizerAnalytical：默认算法。在整手姿态和捏合指尖目标间连续切换。
 - 输入：pkl 回放、Vision Pro、视频、USB 摄像头、RealSense、ZED。
 - 实时调参：PySide6 参数面板、MediaPipe 相机预览和 MuJoCo debug 叠加。
+- 虚拟末端调节：每根手指可沿末节纵向与指甲-指肚厚度方向调整 task tip，并同步到优化器和仿真。
 - LDJY 资产：内置 20 自由度 URDF、左右手 MJCF 和网格，不依赖 Git 子模块。
+- OpenArm 仿真：固定根 54 自由度双臂模型；选中一侧手时自动举起并保持该臂，仅重定向该手的 20 个关节。
 
 ## 资产重建
 
@@ -49,17 +54,35 @@ uv run python tools/build_ldjy_mjcf.py
 uv run python -m unittest tests.test_ldjy_asset_generation -v
 ```
 
+另有固定根的 OpenArm 双臂模型。它保留原始 7+7+20+20 个可动关节；使用
+`--robot openarm` 时，`--hand` 选择哪侧，哪侧手臂便进入预设举手姿态并持续保持，
+只有该侧的 20 个手指关节接收重定向命令。它不控制实体手臂。OpenArm 的 MANO 对齐和
+MJCF actuator 生成说明见 [OpenArm 手部资产](docs/openarm-hand-assets.md)：
+
+```bash
+uv run python tools/build_openarm_hand_urdf.py
+uv run python tools/build_openarm_hand_mjcf.py
+uv run python -m unittest tests.test_openarm_asset_generation -v
+```
+
+```bash
+uv run --no-sync python example/teleop_sim.py \
+  --webcam --camera-index 0 --hand right --robot openarm --show-video
+```
+
 ## 项目结构
 
 ```text
 ldjy_retargeting/
   retarget.py                     统一入口：关键点预处理、优化、滤波
+  openarm_control.py              OpenArm 固定双臂 home 与选中手 20-DOF 控制组装
   mediapipe.py                    wrist 居中、掌面朝向估计和 MANO 坐标变换
   opt/                            AdaptiveOptimizerAnalytical 优化器
   robot.py                        Pinocchio 运动学封装和关节限位
   tuning/                         图形调参的参数 schema、验证、YAML 会话和运行时状态
   viz/                            MuJoCo debug 叠加绘制
   assets/robots/ldjy_hand/        MANO 对齐的左右 URDF、MJCF、网格和资产生成说明
+  assets/robots/openarm_hand/     固定根 OpenArm 双臂、MANO task frame 与 54-DOF MJCF
 
 example/
   teleop_sim.py                   常规仿真入口：回放、视频、USB 相机、RealSense、ZED、Vision Pro
@@ -84,12 +107,12 @@ WebcamMediaPipe -> MediaPipe (21, 3) -> Retargeter -> LDJY qpos (20) -> MuJoCo
 程序会打开两个窗口：
 
 - **调参 GUI（PySide6）**：左侧嵌入 OpenCV/MediaPipe 检测画面，显示手部 landmarks、相机索引、手侧和 GUI 刷新率；右侧为可折叠的参数区域。
-- **MuJoCo debug**：显示半透明 LDJY 模型、黄色实际关节球、青色实际连杆，以及绿色的当前损失目标向量和端点。
+- **MuJoCo debug**：显示半透明 LDJY 模型、黄色实际关节球和青色实际连杆。张手时显示绿色 FullHandVec 的 15 条目标射线；参与捏合的手指改显示红色 TipPos 端点与 TipDir 方向箭头。
 
 参数面板支持滑块和精确数值输入，并对每个参数提供英文键名与中文作用说明。可调运行时参数包括：
 
 - 人手与相机尺度：`z_scale`、掌长归一化、输入骨段修正。
-- 15 条目标向量：五指各自 wrist 到 `PIP / DIP / TIP` 的目标射线缩放，以及全局指尖尺度。
+- 15 条目标向量：五指各自 wrist 到 `PIP / DIP / TIP` 的目标射线缩放；其中每指 `TIP` 比例同时用于捏合指尖位置目标。
 - 损失权重与鲁棒性：位置、末端方向、整手形状与 Huber 阈值。
 - 捏合自适应：四根非拇指的 `d1 / d2` 阈值，GUI 保证 `d1 < d2`。
 - 稳定与滤波：`norm_delta`、`lp_alpha`。
@@ -97,6 +120,7 @@ WebcamMediaPipe -> MediaPipe (21, 3) -> Retargeter -> LDJY qpos (20) -> MuJoCo
 - 高级机械约束：超伸、PIP-DIP 耦合和拇指 PIP 项；默认关闭，应有 LDJY 实测依据后再使用。
 
 注意：15 条 `segment_scaling` 缩放的是从 `retarget_wrist` 到人手关键点的**目标射线**，并不修改 URDF/MJCF 的真实连杆长度。
+每指的 `TIP` 比例同时用于 FullHandVec 和捏合 TipPos，因此两种模式不会再对同一指尖使用两套长度。
 
 ### 自动零位标定 15 条向量
 
@@ -112,6 +136,8 @@ segment_scaling = LDJY 零位射线长度 / 人手 45 帧长度中位数
 
 标定成功后，15 个滑块会立即更新，MuJoCo 仿真也会使用新值，但 YAML 仍不会自动写入。确认效果后点击“保存 YAML”才会持久化配置。
 
+MuJoCo debug 窗口可独立切换“显示骨架”和“显示射线”。点击“暂停”会冻结视频、优化器和物理仿真；此时仍可移动 `tip_offsets` 滑块以静态检查虚拟 task tip，其余优化参数会在恢复运行后生效。
+
 ### 安装和启动
 
 首次运行需要安装 GUI 和 MuJoCo 可选依赖；MediaPipe 与 OpenCV 已是默认依赖：
@@ -126,6 +152,11 @@ uv sync --extra gui --extra tuning
 uv run --no-sync \
   python example/tuning_gui.py --webcam --camera-index 0 --hand right
 ```
+
+GUI 的“末端任务点”分区提供五根手指各两个偏移：纵向沿 `PIP -> DIP`，厚度沿指甲盖到指肚。
+调节时会在 `.cache/tip_tuning/` 生成临时 URDF/MJCF，优化器和 MuJoCo debug 使用同一份缓存资产，
+不会覆盖正式模型。`保存 YAML` 仅保存调参配置；确认后点击“导出正式资产”，才会更新
+`retarget_tip_offsets.yaml` 并重建左右独立手和 OpenArm 双臂资产。
 
 常用选项：
 
@@ -156,7 +187,9 @@ uv run --no-sync \
 - [仓库功能说明](docs/repository-features.md)
 - [启动方式](docs/startup-modes.md)
 - [自适应算法与 LDJY 关节映射](docs/adaptive-algorithm.md)
+- [重定向算法：术语、数学与 GUI 参数](docs/retargeting-algorithm-guide.md)
 - [新输入设备接入](docs/new-device-integration.md)
+- [OpenArm 双臂手部资产](docs/openarm-hand-assets.md)
 
 ## 常用命令
 

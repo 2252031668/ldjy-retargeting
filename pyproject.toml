@@ -50,7 +50,7 @@ override-dependencies = ["numpy>=2"]
 
 [tool.setuptools.package-data]
 "ldjy_retargeting" = [
-    "assets/robots/ldjy_hand/**/*.urdf",
-    "assets/robots/ldjy_hand/**/*.xml",
-    "assets/robots/ldjy_hand/**/*.stl",
+    "assets/robots/**/*.urdf",
+    "assets/robots/**/*.xml",
+    "assets/robots/**/*.stl",
 ]

@@ -25,10 +25,13 @@ MCP（5）和中指 MCP（9）建立掌面坐标系，最后转换到左右手�
 LDJY 的 20 维关节角 `q`。每帧使用上一帧解做 warm start，并使用 Pinocchio
 计算任务帧的位置与雅可比，再由 NLopt SLSQP 在 URDF 限位内求最小值。
 
-它混合两组目标：
+它逐指连续混合两组位置/方向目标：
 
-- FullHand：比较 wrist 到每指 `link3`、`link4`、`tip` 的向量，保持整手形状。
-- TipDir：比较 wrist 到指尖的位置，以及 `link4` 到指尖的方向，优先保证捏合时的接触位置。
+- FullHandVec：比较 wrist 到每指 `link3`（PIP）、`link4`（DIP）、`tip` 的 15 条位置向量，保持整手形状。
+- 捏合目标：TipPos 比较 wrist 到虚拟指尖的位置；TipDir 比较 `link4` 到虚拟指尖的单位方向，优先保证捏合时的接触位置和末节朝向。
+
+`segment_scaling` 是唯一的 15 条位置比例表。每根手指的 `TIP` 比例同时用于 FullHandVec
+和 TipPos，保证两种模式对同一指尖使用相同目标长度；TipDir 是单位方向，不参与长度缩放。
 
 对食指、中指、无名指和小指，拇指指尖距离决定连续权重 `alpha`：距离较远时
 以 FullHand 为主，接近时以 TipDir 为主。目标损失还包含帧间 `norm_delta` 正则，
@@ -64,3 +67,6 @@ MJCF 顺序为 `finger1, finger2, finger3, finger4, thumb`。因此右手和左�
 4. 调整 `segment_scaling`，匹配各段相对长度。
 5. 调整 `norm_delta` 与 `lp_alpha`，平衡抖动和延迟。
 6. 用捏合数据检查指尖接近时的轨迹；只在得到 LDJY 实测依据后再启用关节耦合或超伸约束。
+
+完整术语、目标方程、Huber 损失、`alpha` 混合逻辑以及 GUI 参数说明见
+[重定向算法：术语、数学与 GUI 参数](retargeting-algorithm-guide.md)。

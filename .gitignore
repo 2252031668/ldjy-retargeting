@@ -22,6 +22,10 @@ MUJOCO_LOG.TXT
 
 # Local UI brainstorming artifacts
 .superpowers/
+docs/superpowers/
 
 # Per-user baseline created when the tuning GUI first saves a configuration.
 *.yaml.original.yaml
+
+# Runtime-generated task-tip assets used by the tuning GUI.
+ldjy_retargeting/assets/robots/ldjy_hand/.cache/

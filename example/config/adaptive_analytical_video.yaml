@@ -9,7 +9,6 @@ retarget:
   w_couple: 0.0
   w_pos: 1.0
   w_dir: 10.0
-  scaling: 1.0
   project_tip_dir: false
   w_full_hand: 1.0
   segment_scaling:

@@ -606,31 +606,31 @@
   <joint name="right_finger1_tip_fixed" type="fixed">
     <parent link="right_finger1_link4" />
     <child link="right_finger1_tip" />
-    <origin xyz="-5.12946368656e-18 -0.000898255926846 0.029586045233" rpy="0 0 0" />
+    <origin xyz="-3.94010968055e-18 -0.000594787785201 0.0195906509393" rpy="0 0 0" />
   </joint>
   <link name="right_finger2_tip" />
   <joint name="right_finger2_tip_fixed" type="fixed">
     <parent link="right_finger2_link4" />
     <child link="right_finger2_tip" />
-    <origin xyz="3.22520490779e-19 -0.000825056643836 0.0295881765594" rpy="0 0 0" />
+    <origin xyz="3.39113037287e-19 -0.000546318254652 0.0195920620687" rpy="0 0 0" />
   </joint>
   <link name="right_finger3_tip" />
   <joint name="right_finger3_tip_fixed" type="fixed">
     <parent link="right_finger3_link4" />
     <child link="right_finger3_tip" />
-    <origin xyz="-1.45513261078e-12 0.000427597164136 0.0295965928695" rpy="0 0 0" />
+    <origin xyz="-9.63529011583e-13 0.000283137108652 0.0195976363593" rpy="0 0 0" />
   </joint>
   <link name="right_thumb_tip" />
   <joint name="right_thumb_tip_fixed" type="fixed">
     <parent link="right_thumb_link4" />
     <child link="right_thumb_tip" />
-    <origin xyz="3.00852510204e-18 -0.0399322083726 0.00321148415111" rpy="0 0 0" />
+    <origin xyz="2.39495233588e-18 -0.0303631046125 0.00244190424761" rpy="0 0 0" />
   </joint>
   <link name="right_finger4_tip" />
   <joint name="right_finger4_tip_fixed" type="fixed">
     <parent link="right_finger4_link4" />
     <child link="right_finger4_tip" />
-    <origin xyz="-0.000202119138782 -0.00184365112833 0.0398611378018" rpy="0 0 0" />
+    <origin xyz="-0.000151468124729 -0.00138163253983 0.0298719449766" rpy="0 0 0" />
   </joint>
   <link name="right_retarget_wrist" />
   <joint name="right_retarget_wrist_fixed" type="fixed">

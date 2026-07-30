@@ -18,6 +18,11 @@ EXAMPLE_DIR = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from ldjy_retargeting.simulation_timing import physics_steps_for_tick
+
+
+DEBUG_CONTROL_HZ = 120
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -54,14 +59,37 @@ def _visible_mesh_alpha(model, alpha: float = 0.3) -> None:
 class MuJoCoDebugWorker(threading.Thread):
     """Own the passive MuJoCo viewer and draw the current debug scene."""
 
-    def __init__(self, hand_side: str):
+    def __init__(self, hand_side: str, mjcf_path: Path):
         super().__init__(name="ldjy-mujoco-debug", daemon=True)
         self.hand_side = hand_side
+        self._mjcf_path = Path(mjcf_path)
         self._state_lock = threading.Lock()
         self._frame: tuple[np.ndarray, dict[str, Any], Any] | None = None
+        self._paused = False
+        self._show_skeleton = True
+        self._show_rays = True
         self._stop_event = threading.Event()
         self._viewer = None
         self.error: Exception | None = None
+
+    def reload_tip_sites(self, mjcf_path: Path) -> None:
+        """Request a worker-thread update of virtual tip site positions."""
+        with self._state_lock:
+            self._mjcf_path = Path(mjcf_path)
+
+    @property
+    def paused(self) -> bool:
+        with self._state_lock:
+            return self._paused
+
+    def set_paused(self, paused: bool) -> None:
+        with self._state_lock:
+            self._paused = paused
+
+    def set_display_options(self, *, show_skeleton: bool, show_rays: bool) -> None:
+        with self._state_lock:
+            self._show_skeleton = show_skeleton
+            self._show_rays = show_rays
 
     def submit(self, qpos: np.ndarray, diagnostics: dict[str, Any], optimizer: Any) -> None:
         frame = (
@@ -91,10 +119,8 @@ class MuJoCoDebugWorker(threading.Thread):
         from ldjy_retargeting.viz.debug_overlay import DebugOverlay
 
         try:
-            mjcf_path = (
-                PROJECT_ROOT / "ldjy_retargeting" / "assets" / "robots" / "ldjy_hand"
-                / "mjcf" / f"ldjy_{self.hand_side}_hand.xml"
-            )
+            with self._state_lock:
+                mjcf_path = self._mjcf_path
             model = mujoco.MjModel.from_xml_path(str(mjcf_path))
             _visible_mesh_alpha(model)
             data = mujoco.MjData(model)
@@ -118,9 +144,25 @@ class MuJoCoDebugWorker(threading.Thread):
             for _ in range(100):
                 mujoco.mj_step(model, data)
 
+            control_tick = 0
+            next_control_tick = time.monotonic()
+            applied_mjcf_path = mjcf_path
             while viewer.is_running() and not self._stop_event.is_set():
                 with self._state_lock:
                     frame = self._frame
+                    requested_mjcf_path = self._mjcf_path
+                    paused = self._paused
+                    overlay.show_skeleton = self._show_skeleton
+                    overlay.show_rays = self._show_rays
+                if requested_mjcf_path != applied_mjcf_path:
+                    source_model = mujoco.MjModel.from_xml_path(str(requested_mjcf_path))
+                    for finger in ("thumb", "finger1", "finger2", "finger3", "finger4"):
+                        name = f"{self.hand_side}_{finger}_link4_tip"
+                        target_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
+                        source_id = mujoco.mj_name2id(source_model, mujoco.mjtObj.mjOBJ_SITE, name)
+                        model.site_pos[target_id] = source_model.site_pos[source_id]
+                    mujoco.mj_forward(model, data)
+                    applied_mjcf_path = requested_mjcf_path
                 if frame is not None:
                     qpos, diagnostics, optimizer = frame
                     if qpos_perm is None:
@@ -130,9 +172,17 @@ class MuJoCoDebugWorker(threading.Thread):
                         if qpos_perm is None:
                             raise ValueError("LDJY URDF 与 MJCF 关节名无法重排")
                     actuator_targets = qpos[qpos_perm]
-                    with viewer.lock():
+
+                with viewer.lock():
+                    if frame is not None and not paused:
                         data.ctrl[:] = actuator_targets
-                        mujoco.mj_step(model, data)
+                    if not paused:
+                        physics_steps = physics_steps_for_tick(
+                            control_tick, model.opt.timestep, DEBUG_CONTROL_HZ
+                        )
+                        for _ in range(physics_steps):
+                            mujoco.mj_step(model, data)
+                    if frame is not None:
                         overlay.draw(
                             viewer.user_scn,
                             data,
@@ -141,7 +191,15 @@ class MuJoCoDebugWorker(threading.Thread):
                             diagnostics["pinch_alphas"],
                         )
                 viewer.sync()
-                time.sleep(0.01)
+
+                if not paused:
+                    control_tick += 1
+                next_control_tick += 1.0 / DEBUG_CONTROL_HZ
+                remaining = next_control_tick - time.monotonic()
+                if remaining > 0:
+                    time.sleep(remaining)
+                else:
+                    next_control_tick = time.monotonic()
         except Exception as exc:  # surfaced in the GUI status strip
             self.error = exc
         finally:
@@ -165,6 +223,7 @@ def _run_gui(args: argparse.Namespace) -> int:
         compute_scales,
         human_vector_lengths,
     )
+    from ldjy_retargeting.retarget_tip_frames import DEFAULT_OFFSET_FILE
 
     config_path = _resolve_config_path(args.config).resolve()
 
@@ -183,7 +242,7 @@ def _run_gui(args: argparse.Namespace) -> int:
                 video_config=self.session.config.get("video_input", {}),
                 show_video=False,
             )
-            self.debug_worker = MuJoCoDebugWorker(args.hand)
+            self.debug_worker = MuJoCoDebugWorker(args.hand, self.runtime.debug_mjcf_path)
             self.debug_worker.start()
             self._widgets: dict[str, tuple[Any, Any, Any]] = {}
             self._last_tick = time.monotonic()
@@ -242,9 +301,32 @@ def _run_gui(args: argparse.Namespace) -> int:
             save_button.clicked.connect(self._save)
             default_button = QtWidgets.QPushButton("恢复默认")
             default_button.clicked.connect(self._restore_default)
+            export_button = QtWidgets.QPushButton("导出正式资产")
+            export_button.clicked.connect(self._export_tip_assets)
             actions.addWidget(save_button)
             actions.addWidget(default_button)
+            actions.addWidget(export_button)
             parameter_layout.addLayout(actions)
+            debug_actions = QtWidgets.QHBoxLayout()
+            self.skeleton_toggle = QtWidgets.QToolButton()
+            self.skeleton_toggle.setText("骨架")
+            self.skeleton_toggle.setCheckable(True)
+            self.skeleton_toggle.setChecked(True)
+            self.skeleton_toggle.toggled.connect(self._set_debug_display)
+            self.rays_toggle = QtWidgets.QToolButton()
+            self.rays_toggle.setText("射线")
+            self.rays_toggle.setCheckable(True)
+            self.rays_toggle.setChecked(True)
+            self.rays_toggle.toggled.connect(self._set_debug_display)
+            self.start_button = QtWidgets.QPushButton("开始")
+            self.start_button.clicked.connect(self._resume)
+            self.pause_button = QtWidgets.QPushButton("暂停")
+            self.pause_button.clicked.connect(self._pause)
+            debug_actions.addWidget(self.skeleton_toggle)
+            debug_actions.addWidget(self.rays_toggle)
+            debug_actions.addWidget(self.start_button)
+            debug_actions.addWidget(self.pause_button)
+            parameter_layout.addLayout(debug_actions)
             self.dirty_label = QtWidgets.QLabel()
             parameter_layout.addWidget(self.dirty_label)
             self.status_label = QtWidgets.QLabel("MuJoCo debug 窗口正在启动...")
@@ -352,14 +434,44 @@ def _run_gui(args: argparse.Namespace) -> int:
                 self._refresh_controls()
                 return
             self._update_dirty_label()
+            if self.debug_worker.paused and path.startswith("tip_offsets."):
+                try:
+                    self.debug_worker.reload_tip_sites(
+                        self.runtime.preview_tip_offsets(self.session.config)
+                    )
+                    self.status_label.setText(
+                        "已暂停：虚拟 tip 已更新；点击“开始”后应用到优化器。"
+                    )
+                except Exception as exc:
+                    self.status_label.setText(f"虚拟 tip 预览失败: {exc}")
+                return
             self._apply_timer.start()
 
         def _apply_live_config(self) -> None:
+            if self.debug_worker.paused:
+                self.status_label.setText("已暂停：参数已修改，点击“开始”后应用到优化器与仿真。")
+                return
             try:
                 self.runtime.apply_config(self.session.config)
+                self.debug_worker.reload_tip_sites(self.runtime.debug_mjcf_path)
                 self.status_label.setText("参数已应用到实时重定向，滤波器与 warm start 已重置。")
             except Exception as exc:
                 self.status_label.setText(f"参数应用失败: {exc}")
+
+        def _set_debug_display(self) -> None:
+            self.debug_worker.set_display_options(
+                show_skeleton=self.skeleton_toggle.isChecked(),
+                show_rays=self.rays_toggle.isChecked(),
+            )
+
+        def _pause(self) -> None:
+            self.debug_worker.set_paused(True)
+            self.status_label.setText("已暂停：视频、重定向与 MuJoCo 保持当前帧。")
+
+        def _resume(self) -> None:
+            self.debug_worker.set_paused(False)
+            self._apply_live_config()
+            self.status_label.setText("已开始：从当前摄像头最新帧继续。")
 
         def _refresh_controls(self) -> None:
             config = self.session.config
@@ -405,6 +517,34 @@ def _run_gui(args: argparse.Namespace) -> int:
                 self.status_label.setText("已载入默认基线；点击“保存 YAML”后才会写入当前配置。")
             except Exception as exc:
                 QtWidgets.QMessageBox.warning(self, "恢复默认不可用", str(exc))
+
+        def _export_tip_assets(self) -> None:
+            """Write tuned tips as the canonical source and regenerate all outputs."""
+            import yaml
+
+            try:
+                offsets = self.session.config["tip_offsets"]
+                with DEFAULT_OFFSET_FILE.open("w", encoding="utf-8") as stream:
+                    yaml.safe_dump(
+                        {"version": 1, "units": "mm", "fingers": offsets},
+                        stream,
+                        allow_unicode=True,
+                        sort_keys=False,
+                    )
+                from tools.build_ldjy_mjcf import build_model
+                from tools.build_ldjy_urdf import build_urdf
+                from tools.build_openarm_hand_mjcf import build_mjcf
+                from tools.build_openarm_hand_urdf import build_urdf as build_openarm_urdf
+
+                for side in ("right", "left"):
+                    build_urdf(side, offsets=offsets)
+                for side in ("right", "left"):
+                    build_model(side, offsets=offsets)
+                build_openarm_urdf(offsets=offsets)
+                build_mjcf()
+                self.status_label.setText("已导出正式 LDJY 与 OpenArm URDF/MJCF 资产。")
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(self, "导出资产失败", str(exc))
 
         def _start_calibration(self) -> None:
             self._calibration_samples = []
@@ -467,6 +607,8 @@ def _run_gui(args: argparse.Namespace) -> int:
                 self._finish_calibration()
 
         def _tick(self) -> None:
+            if self.debug_worker.paused:
+                return
             frame = self.device.get_preview_frame()
             if frame is not None:
                 image = QtGui.QImage(

@@ -14,6 +14,9 @@ Usage:
     # Live USB webcam input with MediaPipe hand detection
     python teleop_sim.py --webcam --camera-index 0 --hand right --show-video
 
+    # OpenArm bimanual model: raise and hold the selected arm, retarget its hand
+    python teleop_sim.py --webcam --camera-index 0 --hand right --robot openarm
+
     # RealSense camera input with MediaPipe hand detection
     mjpython teleop_sim.py --realsense --hand right
 
@@ -51,6 +54,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from ldjy_retargeting import Retargeter
+from ldjy_retargeting.openarm_control import OPENARM_MJCF_PATH, OpenArmTeleopControl
+from ldjy_retargeting.simulation_timing import physics_steps_for_tick
 from ldjy_retargeting.viz.debug_overlay import (
     DebugOverlay,
     format_joint_diagnostics,
@@ -81,6 +86,7 @@ except ImportError:
 
 
 DEBUG_MESH_ALPHA = 0.3
+CONTROL_HZ = 120
 
 
 def set_debug_mesh_transparency(model: mujoco.MjModel) -> None:
@@ -106,6 +112,7 @@ def run_teleop(
     show_video: bool = False,
     camera_index: int = 0,
     debug: bool = False,
+    robot: str = "ldjy",
 ):
     """Run teleoperation with MuJoCo simulation.
 
@@ -123,11 +130,16 @@ def run_teleop(
     """
     hand_side = hand_side.lower()
     assert hand_side in {"right", "left"}, "hand_side must be 'right' or 'left'"
+    robot = robot.lower()
+    if robot not in {"ldjy", "openarm"}:
+        raise ValueError("robot must be 'ldjy' or 'openarm'")
 
     # Load an explicitly configured MJCF, or the bundled LDJY hand for this side.
     config_file = Path(__file__).parent / config_path
     mjcf_override = resolve_mjcf_path(config_file)
-    if mjcf_override:
+    if robot == "openarm":
+        mjcf_path = OPENARM_MJCF_PATH
+    elif mjcf_override:
         mjcf_path = Path(mjcf_override)
     else:
         mjcf_path = (
@@ -138,20 +150,37 @@ def run_teleop(
     if not mjcf_path.exists():
         raise FileNotFoundError(f"MuJoCo model file not found: {mjcf_path}")
 
+    # OpenArm reuses the side-specific 20-DOF LDJY hand optimizer. Its arm
+    # joints are deliberately not part of the retargeting optimization.
+    retargeter = Retargeter.from_yaml(str(config_file), hand_side)
     model = mujoco.MjModel.from_xml_path(str(mjcf_path))
     if debug:
         set_debug_mesh_transparency(model)
     data = mujoco.MjData(model)
+    openarm_control = (
+        OpenArmTeleopControl(model, hand_side) if robot == "openarm" else None
+    )
 
     # Start from the mechanical zero pose where it is legal, rather than from
     # each actuator's range midpoint. This keeps finger4_joint1 at 0 instead
     # of its 45-degree midpoint before the first tracked frame arrives.
-    for i in range(model.nu):
-        if model.actuator_ctrllimited[i]:
-            ctrl_range = model.actuator_ctrlrange[i]
-            data.ctrl[i] = np.clip(0.0, ctrl_range[0], ctrl_range[1])
-        else:
-            data.ctrl[i] = 0.0
+    if openarm_control is None:
+        for i in range(model.nu):
+            if model.actuator_ctrllimited[i]:
+                ctrl_range = model.actuator_ctrlrange[i]
+                data.ctrl[i] = np.clip(0.0, ctrl_range[0], ctrl_range[1])
+            else:
+                data.ctrl[i] = 0.0
+    else:
+        openarm_control.set_initial_pose(data)
+        hand_zero = np.clip(
+            0.0,
+            retargeter.optimizer.robot.joint_limits[:, 0],
+            retargeter.optimizer.robot.joint_limits[:, 1],
+        )
+        data.ctrl[:] = openarm_control.targets(
+            retargeter.optimizer.robot.dof_joint_names, hand_zero
+        )
 
     # Stabilize model
     for _ in range(100):
@@ -161,8 +190,12 @@ def run_teleop(
     viewer = mujoco.viewer.launch_passive(model, data)
     viewer.cam.azimuth = 180
     viewer.cam.elevation = -20
-    viewer.cam.distance = 0.5
-    viewer.cam.lookat[:] = [0, 0, 0.05]
+    if robot == "openarm":
+        viewer.cam.distance = 1.8
+        viewer.cam.lookat[:] = [0, 0, 0.5]
+    else:
+        viewer.cam.distance = 0.5
+        viewer.cam.lookat[:] = [0, 0, 0.05]
 
     # Load config to get video_input settings if needed (config_file resolved above)
     with open(config_file, "r") as f:
@@ -225,9 +258,7 @@ def run_teleop(
 
     input_device = device_map[input_device_type]()
 
-    # Initialize retargeter
-    retargeter = Retargeter.from_yaml(str(config_file), hand_side)
-    debug_overlay = DebugOverlay(model) if debug else None
+    debug_overlay = DebugOverlay(model, hand_side) if debug else None
     last_debug_print = 0.0
 
     # qpos is in URDF/Pinocchio joint order; data.ctrl is in actuator order.
@@ -260,6 +291,7 @@ def run_teleop(
     try:
         print(f"Starting teleoperation...")
         print(f"  Config: {config_path}")
+        print(f"  Robot: {robot}")
         print(f"  Hand: {hand_side}")
         print(f"  Input: {input_device_type}")
         print(f"  Recording: {'ON' if enable_recording else 'OFF'}")
@@ -269,6 +301,8 @@ def run_teleop(
 
         frame_count = 0
         fps_start_time = time.time()
+        control_tick = 0
+        next_control_tick = time.monotonic()
 
         while viewer.is_running():
             # Get finger data
@@ -309,10 +343,14 @@ def run_teleop(
             if frame_count % 100 == 0:
                 elapsed = time.time() - fps_start_time
                 fps = frame_count / elapsed
-                print(f"FPS: {fps:.1f}")
+                print(f"Control FPS: {fps:.1f} / target {CONTROL_HZ}")
 
             # Set control signals (remap URDF qpos order -> actuator order).
-            if _qpos_perm is not None:
+            if openarm_control is not None:
+                actuator_targets = openarm_control.targets(
+                    retargeter.optimizer.robot.dof_joint_names, qpos
+                )
+            elif _qpos_perm is not None:
                 actuator_targets = qpos[_qpos_perm]
             else:
                 actuator_targets = qpos
@@ -324,8 +362,12 @@ def run_teleop(
 
             # Step physical simulation, then draw its actual pose and current
             # adaptive target vectors.
+            physics_steps = physics_steps_for_tick(
+                control_tick, model.opt.timestep, CONTROL_HZ
+            )
             with viewer.lock():
-                mujoco.mj_step(model, data)
+                for _ in range(physics_steps):
+                    mujoco.mj_step(model, data)
                 if debug_overlay is not None:
                     debug_overlay.draw(
                         viewer.user_scn,
@@ -350,7 +392,13 @@ def run_teleop(
                 )
                 last_debug_print = time.monotonic()
 
-            time.sleep(model.opt.timestep)
+            control_tick += 1
+            next_control_tick += 1.0 / CONTROL_HZ
+            remaining = next_control_tick - time.monotonic()
+            if remaining > 0:
+                time.sleep(remaining)
+            else:
+                next_control_tick = time.monotonic()
 
     except KeyboardInterrupt:
         print("\nStopping controller...")
@@ -383,6 +431,9 @@ Examples:
   # Live USB webcam input with MediaPipe hand detection
   python teleop_sim.py --webcam --camera-index 0 --hand right --show-video
 
+  # OpenArm bimanual model: selected arm remains raised; only its hand retargets
+  python teleop_sim.py --webcam --camera-index 0 --hand right --robot openarm
+
   # RealSense camera input with MediaPipe hand detection
   mjpython teleop_sim.py --realsense --hand right
 
@@ -403,6 +454,8 @@ Examples:
                         help='Path to YAML configuration file (default: config/adaptive_analytical_avp.yaml)')
     parser.add_argument('--hand', type=str, default='left', choices=['left', 'right'],
                         help='Hand side (default: left)')
+    parser.add_argument('--robot', type=str, default='ldjy', choices=['ldjy', 'openarm'],
+                        help='Simulation robot: standalone ldjy hand or bimanual openarm (default: ldjy)')
 
     # Input device options
     parser.add_argument('--input', type=str, default=None,
@@ -491,6 +544,7 @@ Examples:
         show_video=args.show_video,
         camera_index=args.camera_index,
         debug=args.debug,
+        robot=args.robot,
     )
 
     # Save recording if enabled

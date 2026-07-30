@@ -26,6 +26,35 @@ class LDJYAssetTests(unittest.TestCase):
 
 
 class LDJYDefaultKinematicsTests(unittest.TestCase):
+    def test_tip_position_targets_reuse_the_fifteen_vector_tip_scales(self):
+        """Pinch TipPos and FullHand TIP must use one per-finger target length."""
+        from ldjy_retargeting import Retargeter
+
+        optimizer = Retargeter.from_config({
+            "optimizer": {"type": "AdaptiveOptimizerAnalytical"},
+            "retarget": {
+                "segment_scaling": {
+                    "thumb": [0.8, 0.9, 1.0],
+                    "index": [0.9, 1.0, 1.1],
+                    "middle": [1.0, 1.1, 1.2],
+                    "ring": [1.1, 1.2, 1.3],
+                    "pinky": [1.2, 1.3, 1.4],
+                },
+            },
+        }).optimizer
+        keypoints = np.zeros((21, 3), dtype=np.float64)
+        for finger, tip_index in enumerate(optimizer.MP_TIP_INDICES):
+            keypoints[tip_index] = [0.01 * (finger + 1), 0.02, -0.03]
+
+        tip_pos_targets = optimizer._compute_tip_vectors(
+            keypoints, optimizer.segment_scaling[:, 2]
+        )
+        full_hand_targets = optimizer._compute_full_hand_vectors(
+            keypoints, optimizer.segment_scaling
+        )
+
+        np.testing.assert_allclose(tip_pos_targets, full_hand_targets[10:15])
+
     def test_default_optimizer_uses_generated_side_specific_urdf(self):
         from ldjy_retargeting import Retargeter
 
@@ -128,6 +157,31 @@ class LDJYJointMappingTests(unittest.TestCase):
 
 
 class LDJYDebugSupportTests(unittest.TestCase):
+    def test_debug_overlay_accepts_the_active_hand_for_a_bimanual_model(self):
+        import mujoco
+        from ldjy_retargeting import Retargeter
+        from ldjy_retargeting.viz.debug_overlay import DebugOverlay
+
+        openarm_mjcf = (
+            ROOT
+            / "ldjy_retargeting"
+            / "assets"
+            / "robots"
+            / "openarm_hand"
+            / "mjcf"
+            / "openarm_bimanual_mano.xml"
+        )
+        model = mujoco.MjModel.from_xml_path(str(openarm_mjcf))
+        overlay = DebugOverlay(model, "left")
+        self.assertEqual(overlay.hand_side, "left")
+        data = mujoco.MjData(model)
+        scene = mujoco.MjvScene(model, maxgeom=256)
+        optimizer = Retargeter.from_config(
+            {"optimizer": {"type": "AdaptiveOptimizerAnalytical"}}, "left"
+        ).optimizer
+        overlay.draw(scene, data, optimizer, np.zeros((21, 3)), np.zeros(5))
+        self.assertGreater(scene.ngeom, 0)
+
     def test_debug_mesh_transparency_only_changes_visible_meshes(self):
         import mujoco
         from teleop_sim import DEBUG_MESH_ALPHA, set_debug_mesh_transparency
@@ -185,6 +239,81 @@ class LDJYDebugSupportTests(unittest.TestCase):
         self.assertFalse(
             any(np.allclose(scene.geoms[i].rgba, purple) for i in range(scene.ngeom))
         )
+
+    def test_debug_overlay_can_hide_skeleton_and_target_rays_independently(self):
+        import mujoco
+        from ldjy_retargeting import Retargeter
+        from ldjy_retargeting.viz.debug_overlay import DebugOverlay
+
+        model = mujoco.MjModel.from_xml_path(str(ASSET / "mjcf" / "ldjy_right_hand.xml"))
+        data = mujoco.MjData(model)
+        optimizer = Retargeter.from_config(
+            {"optimizer": {"type": "AdaptiveOptimizerAnalytical"}}
+        ).optimizer
+        scene = mujoco.MjvScene(model, maxgeom=256)
+        overlay = DebugOverlay(model, show_skeleton=False, show_rays=False)
+
+        overlay.draw(scene, data, optimizer, np.zeros((21, 3)), np.zeros(5))
+
+        self.assertEqual(scene.ngeom, 0)
+
+    def test_pinch_dominant_fingers_use_red_rays_without_full_hand_rays(self):
+        from ldjy_retargeting.viz.debug_overlay import _active_target_segments
+
+        class Optimizer:
+            segment_scaling = np.ones((5, 3))
+            MP_TIP_INDICES = [4, 8, 12, 16, 20]
+            MP_DIP_INDICES = [3, 7, 11, 15, 19]
+
+            @staticmethod
+            def _compute_full_hand_vectors(keypoints, scaling):
+                return np.ones((15, 3))
+
+            @staticmethod
+            def _compute_tip_vectors(keypoints, scaling):
+                return np.ones((5, 3))
+
+            @staticmethod
+            def _compute_tip_dirs(keypoints):
+                return np.tile(np.array((0.0, 0.0, 1.0)), (5, 1))
+
+        segments = _active_target_segments(
+            Optimizer(), np.zeros((21, 3)), np.array((0.7, 0.7, 0.0, 0.0, 0.0))
+        )
+
+        self.assertEqual(sum(segment.kind == "full" for segment in segments), 9)
+        self.assertEqual(sum(segment.kind == "pinch" for segment in segments), 4)
+        self.assertTrue(all("TH" not in segment.label for segment in segments if segment.kind == "full"))
+        self.assertTrue(all("F1" not in segment.label for segment in segments if segment.kind == "full"))
+
+    def test_pinch_direction_arrow_ends_at_its_tip_position_target(self):
+        from ldjy_retargeting.viz.debug_overlay import _active_target_segments
+
+        class Optimizer:
+            segment_scaling = np.ones((5, 3))
+            MP_TIP_INDICES = [4, 8, 12, 16, 20]
+            MP_DIP_INDICES = [3, 7, 11, 15, 19]
+
+            @staticmethod
+            def _compute_full_hand_vectors(keypoints, scaling):
+                return np.zeros((15, 3))
+
+            @staticmethod
+            def _compute_tip_vectors(keypoints, scaling):
+                return np.tile(np.array((10.0, 20.0, 30.0)), (5, 1))
+
+            @staticmethod
+            def _compute_tip_dirs(keypoints):
+                return np.tile(np.array((0.0, 0.0, 1.0)), (5, 1))
+
+        segments = _active_target_segments(
+            Optimizer(), np.zeros((21, 3)), np.array((0.7, 0.0, 0.0, 0.0, 0.0))
+        )
+        tip_pos = next(segment for segment in segments if segment.label == "TipPos TH")
+        tip_dir = next(segment for segment in segments if segment.label == "TipDir TH")
+
+        np.testing.assert_allclose(tip_dir.end, tip_pos.end)
+        self.assertLess(tip_dir.start[2], tip_dir.end[2])
 
 
 class LDJYRetargetingSmokeTests(unittest.TestCase):

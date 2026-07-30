@@ -23,7 +23,6 @@ retarget:
   # TipDirVec parameters
   w_pos: 1.0                   # Tip position weight (wrist → tip vectors)
   w_dir: 10.0                  # Tip direction weight (link4 → tip vectors)
-  scaling: 1.0                 # Global MediaPipe scaling parameter
   project_tip_dir: false       # Whether to project tip direction
 
   # FullHandVec parameters

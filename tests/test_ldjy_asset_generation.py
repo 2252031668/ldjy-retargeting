@@ -1,4 +1,6 @@
 from pathlib import Path
+import sys
+import tempfile
 import unittest
 
 import numpy as np
@@ -6,6 +8,8 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSET = ROOT / "ldjy_retargeting" / "assets" / "robots" / "ldjy_hand"
+TOOLS_DIR = ROOT / "tools"
+sys.path.insert(0, str(TOOLS_DIR))
 
 
 class LDJYFrameContractTests(unittest.TestCase):
@@ -70,6 +74,60 @@ class LDJYGeneratedURDFTests(unittest.TestCase):
 
 
 class LDJYGeneratedMJCFTests(unittest.TestCase):
+    def test_nonzero_tip_offsets_match_between_generated_urdf_and_mjcf(self):
+        import mujoco
+        import pinocchio as pin
+        from build_ldjy_mjcf import build_model
+        from build_ldjy_urdf import build_urdf
+
+        offsets = {
+            "thumb": {"axis_mm": 0.0, "surface_mm": 0.0},
+            "finger1": {"axis_mm": 0.0, "surface_mm": 0.0},
+            "finger2": {"axis_mm": 5.0, "surface_mm": -3.0},
+            "finger3": {"axis_mm": 0.0, "surface_mm": 0.0},
+            "finger4": {"axis_mm": 0.0, "surface_mm": 0.0},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "meshes").symlink_to(ASSET / "meshes", target_is_directory=True)
+            urdf_dir = root / "urdf"
+            mjcf_dir = root / "mjcf"
+            for side in ("right", "left"):
+                urdf_path = build_urdf(side, offsets=offsets, output_dir=urdf_dir)
+                mjcf_path = build_model(
+                    side,
+                    offsets=offsets,
+                    urdf_dir=urdf_dir,
+                    output_dir=mjcf_dir,
+                )
+
+                urdf_model = pin.buildModelFromUrdf(str(urdf_path))
+                urdf_data = urdf_model.createData()
+                pin.forwardKinematics(urdf_model, urdf_data, np.zeros(urdf_model.nq))
+                pin.updateFramePlacements(urdf_model, urdf_data)
+                urdf_tip = urdf_data.oMf[
+                    urdf_model.getFrameId(f"{side}_finger2_tip", pin.BODY)
+                ].translation
+
+                mjcf_model = mujoco.MjModel.from_xml_path(str(mjcf_path))
+                mjcf_data = mujoco.MjData(mjcf_model)
+                mujoco.mj_forward(mjcf_model, mjcf_data)
+                site_id = mujoco.mj_name2id(
+                    mjcf_model, mujoco.mjtObj.mjOBJ_SITE, f"{side}_finger2_link4_tip"
+                )
+                np.testing.assert_allclose(mjcf_data.site_xpos[site_id], urdf_tip, atol=1e-6)
+
+                default_model = pin.buildModelFromUrdf(
+                    str(ASSET / "urdf" / f"ldjy_{side}_hand.urdf")
+                )
+                default_data = default_model.createData()
+                pin.forwardKinematics(default_model, default_data, np.zeros(default_model.nq))
+                pin.updateFramePlacements(default_model, default_data)
+                default_tip = default_data.oMf[
+                    default_model.getFrameId(f"{side}_finger2_tip", pin.BODY)
+                ].translation
+                self.assertGreater(np.linalg.norm(urdf_tip - default_tip), 1e-4)
+
     def test_left_positive_flexion_is_the_right_hand_mirror(self):
         import mujoco
 

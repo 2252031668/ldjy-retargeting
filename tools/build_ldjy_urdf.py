@@ -5,12 +5,22 @@ from __future__ import annotations
 from pathlib import Path
 import warnings
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 
 import mujoco
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from ldjy_asset_frames import RIGHT_MANO_FROM_CAD, root_palm_translation
+try:
+    from tools.ldjy_asset_frames import RIGHT_MANO_FROM_CAD, root_palm_translation
+except ModuleNotFoundError:
+    from ldjy_asset_frames import RIGHT_MANO_FROM_CAD, root_palm_translation
+from ldjy_retargeting.retarget_tip_frames import (
+    apply_offset,
+    load_tip_offsets,
+    normalize_tip_offsets,
+    task_frame_axes,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,16 +29,23 @@ SOURCE_URDF = ASSET_DIR / "source" / "step_20_dof_hand.urdf"
 OUTPUT_DIR = ASSET_DIR / "urdf"
 FINGERS = ("finger1", "finger2", "finger3", "thumb", "finger4")
 MIRROR_X = np.diag((-1.0, 1.0, 1.0))
+# The original CAD hand lies approximately in the XZ plane.  +Y is the
+# selected nail-to-pulp reference; the generated GUI labels this convention.
+CAD_NAIL_TO_PULP = np.array((0.0, 1.0, 0.0))
 
 
 def numbers(values: np.ndarray) -> str:
     return " ".join(f"{value:.12g}" for value in np.asarray(values).ravel())
 
 
-def distal_tip_positions(source_model: mujoco.MjModel) -> dict[str, np.ndarray]:
+def distal_tip_positions(
+    source_model: mujoco.MjModel,
+    offsets: Mapping[str, Mapping[str, float]] | None = None,
+) -> dict[str, np.ndarray]:
     """Compute task-frame locations at the distal end of each CAD fingertip."""
     data = mujoco.MjData(source_model)
     mujoco.mj_forward(source_model, data)
+    offsets = normalize_tip_offsets(load_tip_offsets() if offsets is None else offsets)
     positions = {}
     for finger in FINGERS:
         joint3 = mujoco.mj_name2id(
@@ -53,7 +70,19 @@ def distal_tip_positions(source_model: mujoco.MjModel) -> dict[str, np.ndarray]:
         )
         tip = end + direction * ((world_vertices - end) @ direction).max()
         body_id = source_model.jnt_bodyid[joint4]
-        positions[finger] = data.xmat[body_id].reshape(3, 3).T @ (tip - end)
+        base_position = data.xmat[body_id].reshape(3, 3).T @ (tip - end)
+        axis_local, surface_local = task_frame_axes(
+            source_model,
+            data,
+            finger,
+            surface_reference_world=CAD_NAIL_TO_PULP,
+        )
+        positions[finger] = apply_offset(
+            base_position,
+            axis_local,
+            surface_local,
+            **offsets[finger],
+        )
     return positions
 
 
@@ -132,19 +161,24 @@ def prefix_side(root: ET.Element, side: str) -> None:
     root.set("name", f"ldjy_{side}_hand")
 
 
-def build_urdf(side: str) -> Path:
+def build_urdf(
+    side: str,
+    *,
+    offsets: Mapping[str, Mapping[str, float]] | None = None,
+    output_dir: Path = OUTPUT_DIR,
+) -> Path:
     if side not in ("right", "left"):
         raise ValueError(f"Unsupported side: {side}")
     source_model = mujoco.MjModel.from_xml_path(str(SOURCE_URDF))
     root = ET.parse(SOURCE_URDF).getroot()
-    add_tip_frames(root, distal_tip_positions(source_model))
+    add_tip_frames(root, distal_tip_positions(source_model, offsets))
     if side == "left":
         mirror_cad_tree(root)
     add_mano_root(root, side)
     prefix_side(root, side)
     ET.indent(root, space="  ")
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    output = OUTPUT_DIR / f"ldjy_{side}_hand.urdf"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output = output_dir / f"ldjy_{side}_hand.urdf"
     ET.ElementTree(root).write(output, encoding="utf-8", xml_declaration=True)
     return output
 
