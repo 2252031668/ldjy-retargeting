@@ -7,6 +7,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from .base import InferenceSample
 from .video_mediapipe import VideoMediaPipe
 
 
@@ -25,6 +26,8 @@ class WebcamMediaPipe(VideoMediaPipe):
         self.camera_index = camera_index
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
+        self._resume_event = threading.Event()
+        self._resume_event.set()
         self._worker_thread = None
         self._empty = np.zeros((21, 3), dtype=np.float32)
         self._latest_result = {
@@ -71,8 +74,17 @@ class WebcamMediaPipe(VideoMediaPipe):
                 return None
             return self._latest_preview_frame.copy()
 
+    def set_paused(self, paused: bool) -> None:
+        if paused:
+            self._resume_event.clear()
+        else:
+            self._resume_event.set()
+
     def _capture_loop(self) -> None:
         while not self._stop_event.is_set():
+            self._resume_event.wait()
+            if self._stop_event.is_set():
+                break
             ok, frame = self.cap.read()
             if not ok:
                 time.sleep(0.01)
@@ -80,7 +92,7 @@ class WebcamMediaPipe(VideoMediaPipe):
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = self.mp_hands.process(rgb)
-            keypoints, raw_landmarks = self._extract_landmarks(results)
+            keypoints, raw_landmarks, detector_landmarks = self._extract_landmarks(results)
 
             if keypoints is not None:
                 keypoints = self._process_landmarks(keypoints)
@@ -89,6 +101,21 @@ class WebcamMediaPipe(VideoMediaPipe):
             else:
                 keypoints = self._last_valid_kp
                 raw_landmarks = self._last_valid_raw
+
+            self.publish_inference_sample(InferenceSample(
+                timestamp_sec=time.monotonic(),
+                frame_bgr=frame.copy(),
+                input_type="webcam",
+                hand_side=self.hand_side,
+                detected=detector_landmarks is not None,
+                payload={
+                    "detector_landmarks": None if detector_landmarks is None else detector_landmarks.copy(),
+                    "processed_landmarks": (
+                        np.zeros((21, 3), dtype=np.float32)
+                        if keypoints is None else keypoints.copy()
+                    ),
+                },
+            ))
 
             preview = self._annotate_frame(frame, raw_landmarks)
             if self.show_video:
@@ -106,20 +133,25 @@ class WebcamMediaPipe(VideoMediaPipe):
 
     def _extract_landmarks(self, results):
         if not results.multi_hand_landmarks or not results.multi_handedness:
-            return None, None
+            return None, None, None
 
         for hand_landmarks, hand_classification in zip(
             results.multi_hand_landmarks, results.multi_handedness
         ):
             if hand_classification.classification[0].label == self._expected_mp_label:
-                return self._landmarks_to_array(hand_landmarks), [
-                    (landmark.x, landmark.y) for landmark in hand_landmarks.landmark
-                ]
+                return self._extract_hand_landmarks(hand_landmarks)
 
         hand_landmarks = results.multi_hand_landmarks[0]
+        return self._extract_hand_landmarks(hand_landmarks)
+
+    def _extract_hand_landmarks(self, hand_landmarks):
+        detector_landmarks = np.asarray([
+            (landmark.x, landmark.y, landmark.z)
+            for landmark in hand_landmarks.landmark
+        ], dtype=np.float32)
         return self._landmarks_to_array(hand_landmarks), [
             (landmark.x, landmark.y) for landmark in hand_landmarks.landmark
-        ]
+        ], detector_landmarks
 
     def _annotate_frame(self, frame: np.ndarray, raw_landmarks) -> np.ndarray:
         display = frame.copy()
@@ -148,6 +180,7 @@ class WebcamMediaPipe(VideoMediaPipe):
         if not hasattr(self, "_stop_event"):
             return
         self._stop_event.set()
+        self._resume_event.set()
         if self._worker_thread is not None and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=1.0)
         if getattr(self, "cap", None) is not None:

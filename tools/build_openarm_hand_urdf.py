@@ -206,7 +206,20 @@ def split_hand_mount(root: ET.Element, side: str) -> None:
 def standalone_task_points(
     offsets: Mapping[str, Mapping[str, float]],
 ) -> dict[str, dict[str, np.ndarray]]:
-    """Return canonical MANO-wrist task points from standalone LDJY assets."""
+    """Return canonical MANO-wrist tip points from standalone LDJY assets."""
+    return {
+        side: {
+            finger: frame["tip"].translation.copy()
+            for finger, frame in fingers.items()
+        }
+        for side, fingers in standalone_task_frames(offsets).items()
+    }
+
+
+def standalone_task_frames(
+    offsets: Mapping[str, Mapping[str, float]],
+) -> dict[str, dict[str, dict[str, pin.SE3]]]:
+    """Return canonical MANO-wrist tip and pad frames from standalone LDJY assets."""
     with tempfile.TemporaryDirectory() as directory:
         temporary_root = Path(directory)
         (temporary_root / "meshes").symlink_to(
@@ -223,12 +236,16 @@ def standalone_task_points(
             pin.forwardKinematics(model, data, np.zeros(model.nq))
             pin.updateFramePlacements(model, data)
             wrist = data.oMf[model.getFrameId(f"{side}_retarget_wrist", pin.BODY)].inverse()
-            result[side] = {
-                finger: (wrist * data.oMf[
-                    model.getFrameId(f"{side}_{finger}_tip", pin.BODY)
-                ]).translation.copy()
-                for finger in FINGERS
-            }
+            result[side] = {}
+            for finger in FINGERS:
+                result[side][finger] = {
+                    "tip": wrist * data.oMf[
+                        model.getFrameId(f"{side}_{finger}_tip", pin.BODY)
+                    ],
+                    "pad": wrist * data.oMf[
+                        model.getFrameId(f"{side}_{finger}_pad_frame", pin.BODY)
+                    ],
+                }
     return result
 
 
@@ -273,6 +290,39 @@ def add_tip_frames(
         ET.SubElement(joint, "origin", {"xyz": numbers(position), "rpy": "0 0 0"})
 
 
+def add_pad_frames(
+    root: ET.Element,
+    model: mujoco.MjModel,
+    task_frames: Mapping[str, Mapping[str, Mapping[str, pin.SE3]]],
+    side: str,
+) -> None:
+    """Copy the standalone MANO-wrist pad frames onto the matching OpenArm hand."""
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    world_from_wrist, wrist_position = openarm_wrist_pose(model, data, side)
+    for finger, frames in task_frames[side].items():
+        task_frame = frames["pad"]
+        joint4 = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_JOINT, f"{side}_{finger}_joint4"
+        )
+        body_id = model.jnt_bodyid[joint4]
+        world_from_link4 = data.xmat[body_id].reshape(3, 3)
+        target_world = wrist_position + world_from_wrist @ task_frame.translation
+        position = world_from_link4.T @ (target_world - data.xpos[body_id])
+        rotation = world_from_link4.T @ world_from_wrist @ task_frame.rotation
+        frame_name = f"{side}_{finger}_pad_frame"
+        ET.SubElement(root, "link", {"name": frame_name})
+        joint = ET.SubElement(
+            root, "joint", {"name": f"{frame_name}_fixed", "type": "fixed"}
+        )
+        ET.SubElement(joint, "parent", {"link": f"{side}_{finger}_link4"})
+        ET.SubElement(joint, "child", {"link": frame_name})
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Gimbal lock detected")
+            rpy = Rotation.from_matrix(rotation).as_euler("xyz")
+        ET.SubElement(joint, "origin", {"xyz": numbers(position), "rpy": numbers(rpy)})
+
+
 def build_urdf(
     *,
     offsets: Mapping[str, Mapping[str, float]] | None = None,
@@ -287,9 +337,17 @@ def build_urdf(
     for side in ("left", "right"):
         split_hand_mount(root, side)
     source_model = visual_surface_model(root)
-    task_points = standalone_task_points(offsets)
+    task_frames = standalone_task_frames(offsets)
+    task_points = {
+        side: {
+            finger: frame["tip"].translation.copy()
+            for finger, frame in fingers.items()
+        }
+        for side, fingers in task_frames.items()
+    }
     for side in ("left", "right"):
         add_tip_frames(root, source_model, task_points, side)
+        add_pad_frames(root, source_model, task_frames, side)
     root.set("name", "openarm_bimanual_mano")
     ET.indent(root, space="  ")
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -20,9 +20,13 @@ uv run --no-sync python example/teleop_sim.py --webcam --camera-index 0 --hand r
 
 ```bash
 uv sync --extra gui --extra tuning
-uv run --no-sync \
-  python example/tuning_gui.py --webcam --camera-index 0 --hand right
+uv run --no-sync python example/tuning_gui.py
 ```
+
+在窗口顶部选择算法、`Webcam MediaPipe` 或 `Webcam WiLoR`、USB 相机和手侧，然后点击“应用输入”。
+命令行
+`--webcam`、`--webcam-wilor`、`--camera-index` 和 `--hand` 仅保留为初始选择兼容参数，不再是日常启动所需。
+例如旧脚本可继续使用 `python example/tuning_gui.py --webcam --camera-index 0 --hand right`，但推荐直接启动 GUI。
 
 GUI 相机预览按检测帧更新；独立 MuJoCo debug 窗口按 120 Hz 刷新，并以 2 ms 子步保持
 500 Hz 平均物理积分，因此手模型的物理时间与现实时间保持同步。
@@ -32,6 +36,20 @@ GUI 相机预览按检测帧更新；独立 MuJoCo debug 窗口按 120 Hz 刷新
 ```bash
 uv run --no-sync python example/teleop_sim.py --play example/data/avp1.pkl --hand left
 ```
+
+### WiLoR 实时 USB 摄像头
+
+安装 `wilor` extra 后，可以直接以 WiLoR `fast` 模式从 USB 摄像头重定向。该模式使用 CUDA、FP16 与
+backbone block skipping；模型在后台线程推理，MuJoCo 控制线程始终读取最近完成的一帧，不会等待模型。
+
+```bash
+uv run --extra wilor python example/teleop_sim.py \
+  --input webcam_wilor --camera-index 0 --hand left --show-video
+```
+
+`--hand` 选择 WiLoR 输出的物理左右手。短暂丢失目标侧时会保持最后一帧有效 MANO 21 点；若同侧出现多个
+候选，选择画面检测框最大的一个。`--show-video` 窗口显示 WiLoR 检测框、当前目标侧和实际推理 FPS。
+WiLoR 输入已是米制 MANO 关键点，不经过 MediaPipe 的 `z_scale`、0.09 m 归一化或骨段修正。
 
 ## 功能
 
@@ -79,14 +97,14 @@ ldjy_retargeting/
   mediapipe.py                    wrist 居中、掌面朝向估计和 MANO 坐标变换
   opt/                            AdaptiveOptimizerAnalytical 优化器
   robot.py                        Pinocchio 运动学封装和关节限位
-  tuning/                         图形调参的参数 schema、验证、YAML 会话和运行时状态
+  tuning/                         图形调参的参数 schema、验证、YAML 会话、记录与回放状态
   viz/                            MuJoCo debug 叠加绘制
   assets/robots/ldjy_hand/        MANO 对齐的左右 URDF、MJCF、网格和资产生成说明
   assets/robots/openarm_hand/     固定根 OpenArm 双臂、MANO task frame 与 54-DOF MJCF
 
 example/
   teleop_sim.py                   常规仿真入口：回放、视频、USB 相机、RealSense、ZED、Vision Pro
-  tuning_gui.py                   USB 相机实时图形调参入口
+  tuning_gui.py                   USB 实时调参与静态记录回放入口
   input_devices/                  各输入设备适配器，统一输出 MediaPipe (21, 3) 关键点
   config/                         自适应算法与视频输入 YAML 配置
   data/                           pkl 回放样例
@@ -98,10 +116,11 @@ docs/                             中文开发者文档与设计/实施记录
 
 ## 实时图形调参：`tuning_gui.py`
 
-`example/tuning_gui.py` 是面向 USB 摄像头实时重定向的桌面调参工具。它不改变原有数据链路：
+`example/tuning_gui.py` 是面向 USB 摄像头实时重定向的桌面调参工具，支持 MediaPipe 和 WiLoR 两条输入链路：
 
 ```text
 WebcamMediaPipe -> MediaPipe (21, 3) -> Retargeter -> LDJY qpos (20) -> MuJoCo
+WebcamWiLoR -> WiLoR MANO joints (21, 3) -> Retargeter -> LDJY qpos (20) -> MuJoCo
 ```
 
 程序会打开两个窗口：
@@ -111,7 +130,7 @@ WebcamMediaPipe -> MediaPipe (21, 3) -> Retargeter -> LDJY qpos (20) -> MuJoCo
 
 参数面板支持滑块和精确数值输入，并对每个参数提供英文键名与中文作用说明。可调运行时参数包括：
 
-- 人手与相机尺度：`z_scale`、掌长归一化、输入骨段修正。
+- 人手与相机尺度：`z_scale`、掌长归一化、输入骨段修正（仅 MediaPipe）。
 - 15 条目标向量：五指各自 wrist 到 `PIP / DIP / TIP` 的目标射线缩放；其中每指 `TIP` 比例同时用于捏合指尖位置目标。
 - 损失权重与鲁棒性：位置、末端方向、整手形状与 Huber 阈值。
 - 捏合自适应：四根非拇指的 `d1 / d2` 阈值，GUI 保证 `d1 < d2`。
@@ -146,11 +165,21 @@ MuJoCo debug 窗口可独立切换“显示骨架”和“显示射线”。点�
 uv sync --extra gui --extra tuning
 ```
 
-默认使用 USB 摄像头 `0` 和右手：
+启动后在顶部选择 USB 摄像头 `0`、手侧和算法，再点击“应用输入”：
 
 ```bash
-uv run --no-sync \
-  python example/tuning_gui.py --webcam --camera-index 0 --hand right
+uv run --no-sync python example/tuning_gui.py
+```
+
+WiLoR 实时输入使用 `Adaptive Analytical (WiLoR 21 点)`。它不会读取或显示 MediaPipe 专用的
+`video_input.z_scale`、`reference_wrist_to_mid_mcp`、`correct_segments`。WiLoR 模式的调参窗口默认显示无检测框的原始相机画面；MuJoCo 控制行的
+“MANO”按钮可叠加相机对齐的半透明 MANO 网格。网格仅在 WiLoR 推理得到新帧时更新，短暂丢失目标手时
+保持最后有效网格。点击“暂停”会等待正在执行的一帧 WiLoR 推理完成，然后停止后续相机读取和 CUDA
+推理；恢复“开始”后才继续。首次使用 WiLoR 时安装额外依赖：
+
+```bash
+uv sync --extra gui --extra tuning --extra wilor
+uv run --no-sync python example/tuning_gui.py
 ```
 
 GUI 的“末端任务点”分区提供五根手指各两个偏移：纵向沿 `PIP -> DIP`，厚度沿指甲盖到指肚。
@@ -161,17 +190,15 @@ GUI 的“末端任务点”分区提供五根手指各两个偏移：纵向沿 
 常用选项：
 
 ```bash
-# 左手
-uv run --no-sync \
-  python example/tuning_gui.py --webcam --camera-index 0 --hand left
-
 # 指定自己的自适应配置
 uv run --no-sync \
-  python example/tuning_gui.py --webcam --camera-index 0 --hand right \
-  --config config/adaptive_analytical_video.yaml
+  python example/tuning_gui.py --config config/adaptive_analytical_video.yaml
 ```
 
-首版 GUI 先实现 USB 摄像头。底层仍依赖 `InputDeviceBase` 的标准 `(21, 3)` 接口；以后为视频、RealSense、ZED、回放等设备补充 `get_preview_frame()` 后，可以复用同一 GUI 和重定向链路。
+首版 GUI 支持 USB 实时输入与自身的静态调参记录回放。实时模式的“开始记录”会保存每个完成推理对应的一帧
+视频与结果到 `outputs/tuning_records/{mediapipe,wilor}/<日期时间>/`；进入顶部的“静态调参记录”模式后可选择
+同类记录。回放锁定录制手侧，不再运行检测模型；MediaPipe 会按当前 `video_input` 参数重新预处理原始点，
+WiLoR 直接读取保存的 MANO 数据。底层仍依赖 `InputDeviceBase` 的标准 `(21, 3)` 接口。
 
 ### 当前 YAML 与默认 YAML
 
@@ -194,9 +221,8 @@ uv run --no-sync \
 ## 常用命令
 
 ```bash
-# USB 摄像头图形调参
-uv run --no-sync \
-  python example/tuning_gui.py --webcam --camera-index 0 --hand right
+# USB 摄像头图形调参 / 静态记录回放
+uv run --no-sync python example/tuning_gui.py
 
 # MP4 视频
 uv run --no-sync python example/teleop_sim.py --video <VIDEO.mp4> --hand right --show-video

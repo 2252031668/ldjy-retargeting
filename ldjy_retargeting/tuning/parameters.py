@@ -66,7 +66,6 @@ _DEFAULT_TIP_OFFSETS = {
     finger: {"axis_mm": 0.0, "surface_mm": 0.0} for finger in ASSET_FINGERS
 }
 
-
 def _spec(
     path: str,
     group: str,
@@ -242,6 +241,9 @@ def _merge_defaults(target: dict[str, Any], defaults: dict[str, Any]) -> None:
 
 def normalize_runtime_config(config: dict[str, Any]) -> dict[str, Any]:
     """Inject supported runtime defaults into a mutable YAML configuration."""
+    optimizer = config.setdefault("optimizer", {})
+    if not isinstance(optimizer, dict):
+        raise ValueError("optimizer must be a mapping")
     retarget = config.setdefault("retarget", {})
     if not isinstance(retarget, dict):
         raise ValueError("retarget must be a mapping")

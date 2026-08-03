@@ -1,7 +1,7 @@
 # 新输入设备接入
 
-新设备只需实现 `InputDeviceBase.get_fingers_data()` 并返回统一的 MediaPipe
-关键点格式：
+新设备只需实现 `InputDeviceBase.get_fingers_data()` 并返回统一的 `(21, 3)`
+关键点接口：
 
 ```python
 {
@@ -10,8 +10,9 @@
 }
 ```
 
-未检测到手时返回全零数组。数组顺序必须是 MediaPipe 的 21 点顺序，坐标应为米。
-`Retargeter` 会统一完成 wrist 对齐和 MANO 坐标变换。
+未检测到手时返回全零数组。数组顺序采用 MediaPipe/MANO 共用的 21 点顺序，坐标应为米。
+MediaPipe 适配器提供归一化相机关键点；WiLoR 适配器提供米制 MANO 关节。`Retargeter` 会统一完成
+wrist 对齐和 MANO 坐标变换。
 
 ```python
 import numpy as np

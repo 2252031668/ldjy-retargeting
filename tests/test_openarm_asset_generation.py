@@ -75,7 +75,7 @@ class OpenArmGeneratedAssetTests(unittest.TestCase):
 
     def test_generated_zero_pose_applies_mount_and_j7_calibration(self):
         import pinocchio as pin
-        from tools.build_openarm_hand_urdf import (
+        from build_openarm_hand_urdf import (
             J7_HOME_OFFSETS,
             PALM_MOUNT_TRANSLATION_CORRECTIONS,
         )
@@ -188,6 +188,9 @@ class OpenArmGeneratedAssetTests(unittest.TestCase):
                 self.assertLess(
                     model.getFrameId(f"{side}_{finger}_tip", pin.BODY), model.nframes
                 )
+                self.assertLess(
+                    model.getFrameId(f"{side}_{finger}_pad_frame", pin.BODY), model.nframes
+                )
 
     def test_mjcf_has_one_position_actuator_for_each_of_54_joints(self):
         import mujoco
@@ -228,6 +231,7 @@ class OpenArmGeneratedAssetTests(unittest.TestCase):
         for side in ("left", "right"):
             frame_names = [f"{side}_retarget_wrist"]
             frame_names += [f"{side}_{finger}_tip" for finger in FINGERS]
+            frame_names += [f"{side}_{finger}_pad_frame" for finger in FINGERS]
             for frame_name in frame_names:
                 urdf_position = urdf_data.oMf[
                     urdf_model.getFrameId(frame_name, pin.BODY)
@@ -237,6 +241,22 @@ class OpenArmGeneratedAssetTests(unittest.TestCase):
                 )
                 np.testing.assert_allclose(
                     mjcf_data.xpos[body_id], urdf_position, atol=1e-6
+                )
+
+            for finger in FINGERS:
+                pad_pose = urdf_data.oMf[
+                    urdf_model.getFrameId(f"{side}_{finger}_pad_frame", pin.BODY)
+                ]
+                site_id = mujoco.mj_name2id(
+                    mjcf_model, mujoco.mjtObj.mjOBJ_SITE, f"{side}_{finger}_pad_center"
+                )
+                np.testing.assert_allclose(
+                    mjcf_data.site_xpos[site_id], pad_pose.translation, atol=1e-6
+                )
+                np.testing.assert_allclose(
+                    mjcf_data.site_xmat[site_id].reshape(3, 3),
+                    pad_pose.rotation,
+                    atol=3e-6,
                 )
 
     def test_mjcf_preserves_openarm_red_and_gold_appearance(self):

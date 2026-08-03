@@ -119,6 +119,52 @@ class RobotWrapper:
         pose: pin.SE3 = pin.updateFramePlacement(self.model, self.data, link_id)
         return pose.homogeneous
 
+    @staticmethod
+    def _skew(vector: npt.NDArray) -> npt.NDArray:
+        x, y, z = np.asarray(vector, dtype=np.float64)
+        return np.array(((0.0, -z, y), (z, 0.0, -x), (-y, x, 0.0)))
+
+    @staticmethod
+    def _surface_vectors(local_point, local_normal) -> tuple[npt.NDArray, npt.NDArray]:
+        point = np.asarray(local_point, dtype=np.float64)
+        normal = np.asarray(local_normal, dtype=np.float64)
+        if point.shape != (3,) or not np.isfinite(point).all():
+            raise ValueError("local_point must be a finite length-3 vector")
+        if normal.shape != (3,) or not np.isfinite(normal).all():
+            raise ValueError("local_normal must be a finite length-3 vector")
+        normal_norm = np.linalg.norm(normal)
+        if normal_norm <= 1e-12:
+            raise ValueError("local_normal must be nonzero")
+        return point, normal / normal_norm
+
+    def anchor_pose(self, qpos, link_id: int, local_point, local_normal) -> tuple[npt.NDArray, npt.NDArray]:
+        """Return a local surface anchor point and unit normal in world coordinates."""
+        point, normal = self._surface_vectors(local_point, local_normal)
+        pin.forwardKinematics(self.model, self.data, np.asarray(qpos, dtype=np.float64))
+        pin.updateFramePlacements(self.model, self.data)
+        placement = self.data.oMf[link_id]
+        return placement.rotation @ point + placement.translation, placement.rotation @ normal
+
+    def compute_anchor_jacobians(
+        self, qpos, link_id: int, local_point, local_normal
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        """Return world anchor point/normal and analytic derivatives with respect to qpos."""
+        point, normal = self._surface_vectors(local_point, local_normal)
+        qpos = np.asarray(qpos, dtype=np.float64)
+        pin.computeJointJacobians(self.model, self.data, qpos)
+        pin.updateFramePlacements(self.model, self.data)
+        placement = self.data.oMf[link_id]
+        spatial = pin.getFrameJacobian(
+            self.model, self.data, link_id, pin.LOCAL_WORLD_ALIGNED
+        )
+        linear, angular = spatial[:3, :], spatial[3:, :]
+        offset = placement.rotation @ point
+        normal_world = placement.rotation @ normal
+        position_world = placement.translation + offset
+        position_jacobian = linear - self._skew(offset) @ angular
+        normal_jacobian = -self._skew(normal_world) @ angular
+        return position_world, normal_world, position_jacobian, normal_jacobian
+
     def compute_single_link_local_jacobian(self, qpos, link_id: int) -> npt.NDArray:
         """Compute Jacobian for a single link."""
         J = pin.computeFrameJacobian(self.model, self.data, qpos, link_id)

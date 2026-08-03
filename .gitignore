@@ -29,3 +29,6 @@ docs/superpowers/
 
 # Runtime-generated task-tip assets used by the tuning GUI.
 ldjy_retargeting/assets/robots/ldjy_hand/.cache/
+
+# Runtime recordings and inference results. WiLoR source remains an unmodified submodule.
+outputs/

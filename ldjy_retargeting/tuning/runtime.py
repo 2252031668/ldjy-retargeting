@@ -15,7 +15,7 @@ from ldjy_retargeting.retarget_tip_frames import normalize_tip_offsets
 from ldjy_retargeting.tuning.vector_scale_calibration import robot_vector_lengths
 
 
-TIP_ASSET_CACHE_VERSION = 2
+TIP_ASSET_CACHE_VERSION = 3
 
 
 class TuningRuntime:
@@ -134,6 +134,5 @@ class TuningRuntime:
         """Retarget one standard `(21, 3)` hand landmark frame."""
         qpos, diagnostics = self.retargeter.retarget_verbose(raw_keypoints)
         return qpos, diagnostics
-
 
 __all__ = ["TuningRuntime"]

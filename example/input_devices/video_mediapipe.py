@@ -42,6 +42,61 @@ _FINGER_INDICES = {
 }
 
 
+def detector_landmarks_to_array(
+    detector_landmarks: np.ndarray, width: int, height: int, z_scale: float
+) -> np.ndarray:
+    """Convert raw MediaPipe normalized landmarks into pixel-scale 3D points."""
+    landmarks = np.asarray(detector_landmarks, dtype=np.float32)
+    if landmarks.shape != (21, 3):
+        raise ValueError("detector_landmarks must have shape (21, 3)")
+    keypoints = landmarks.copy()
+    keypoints[:, 0] *= width
+    keypoints[:, 1] *= height
+    keypoints[:, 2] *= width * z_scale
+    return keypoints
+
+
+def correct_segment_lengths(keypoints: np.ndarray) -> np.ndarray:
+    """Apply the reference per-finger segment lengths to wrist-centred points."""
+    kp_corrected = keypoints.copy()
+    for finger_name, indices in _FINGER_INDICES.items():
+        ref_lengths = _REFERENCE_SEGMENT_LENGTHS[finger_name]
+        mcp_i, pip_i, dip_i, tip_i = indices
+        base = kp_corrected[mcp_i].copy()
+        seg1 = keypoints[pip_i] - keypoints[mcp_i]
+        seg1_len = np.linalg.norm(seg1)
+        if seg1_len > 1e-6:
+            kp_corrected[pip_i] = base + seg1 / seg1_len * ref_lengths[0]
+        seg2 = keypoints[dip_i] - keypoints[pip_i]
+        seg2_len = np.linalg.norm(seg2)
+        if seg2_len > 1e-6:
+            kp_corrected[dip_i] = kp_corrected[pip_i] + seg2 / seg2_len * ref_lengths[1]
+        seg3 = keypoints[tip_i] - keypoints[dip_i]
+        seg3_len = np.linalg.norm(seg3)
+        if seg3_len > 1e-6:
+            kp_corrected[tip_i] = kp_corrected[dip_i] + seg3 / seg3_len * ref_lengths[2]
+    return kp_corrected
+
+
+def process_detector_landmarks(
+    detector_landmarks: np.ndarray,
+    *,
+    width: int,
+    height: int,
+    z_scale: float,
+    reference_wrist_to_mid_mcp: float,
+    correct_segments: bool,
+) -> np.ndarray:
+    """Run the same MediaPipe pre-retarget processing used for live input."""
+    keypoints = detector_landmarks_to_array(detector_landmarks, width, height, z_scale)
+    keypoints = keypoints - keypoints[0:1, :]
+    distance = np.linalg.norm(keypoints[9])
+    if distance < 1e-6:
+        return keypoints
+    keypoints *= reference_wrist_to_mid_mcp / distance
+    return correct_segment_lengths(keypoints) if correct_segments else keypoints
+
+
 class VideoMediaPipe(InputDeviceBase):
     """Read MP4 video and extract hand landmarks via MediaPipe."""
 
@@ -192,16 +247,12 @@ class VideoMediaPipe(InputDeviceBase):
         We convert to pixel-scale 3D coordinates with z amplified
         to compensate for monocular depth compression.
         """
-        kp = np.array(
-            [[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark],
-            dtype=np.float32,
+        return detector_landmarks_to_array(
+            np.asarray([[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark]),
+            self.frame_width,
+            self.frame_height,
+            self.z_scale,
         )
-        # Scale to pixel space. z uses x-scale per MediaPipe convention,
-        # amplified by z_scale to compensate for monocular depth compression.
-        kp[:, 0] *= self.frame_width
-        kp[:, 1] *= self.frame_height
-        kp[:, 2] *= self.frame_width * self.z_scale
-        return kp
 
     def _process_landmarks(self, kp: np.ndarray) -> np.ndarray:
         """Center at wrist and scale to approximate real-world meters.
@@ -209,21 +260,13 @@ class VideoMediaPipe(InputDeviceBase):
         Uses wrist-to-middle-finger-MCP distance as reference (~0.09m).
         Optionally corrects per-finger segment lengths using anthropometric data.
         """
-        # Center at wrist
+        # Preserve backwards compatibility for callers already holding pixel points.
         kp = kp - kp[0:1, :]
-
-        # Global scale: match wrist-to-middle-MCP distance
-        dist = np.linalg.norm(kp[9])
-        if dist < 1e-6:
+        distance = np.linalg.norm(kp[9])
+        if distance < 1e-6:
             return kp
-        scale = self._reference_wrist_to_mid_mcp / dist
-        kp = kp * scale
-
-        # Per-segment scaling to correct finger proportions
-        if self.correct_segments:
-            kp = self._correct_segment_lengths(kp)
-
-        return kp
+        kp *= self._reference_wrist_to_mid_mcp / distance
+        return self._correct_segment_lengths(kp) if self.correct_segments else kp
 
     def _correct_segment_lengths(self, kp: np.ndarray) -> np.ndarray:
         """Correct individual finger segment lengths to match anthropometric data.
@@ -231,37 +274,7 @@ class VideoMediaPipe(InputDeviceBase):
         Scales each segment (MCP->PIP, PIP->DIP, DIP->TIP) to match
         expected lengths while preserving directions.
         """
-        kp_corrected = kp.copy()
-
-        for finger_name, indices in _FINGER_INDICES.items():
-            ref_lengths = _REFERENCE_SEGMENT_LENGTHS[finger_name]
-            mcp_i, pip_i, dip_i, tip_i = indices
-
-            # Base point for this finger chain
-            base = kp_corrected[mcp_i].copy()
-
-            # Segment 1: MCP -> PIP
-            seg1 = kp[pip_i] - kp[mcp_i]
-            seg1_len = np.linalg.norm(seg1)
-            if seg1_len > 1e-6:
-                seg1_dir = seg1 / seg1_len
-                kp_corrected[pip_i] = base + seg1_dir * ref_lengths[0]
-
-            # Segment 2: PIP -> DIP
-            seg2 = kp[dip_i] - kp[pip_i]
-            seg2_len = np.linalg.norm(seg2)
-            if seg2_len > 1e-6:
-                seg2_dir = seg2 / seg2_len
-                kp_corrected[dip_i] = kp_corrected[pip_i] + seg2_dir * ref_lengths[1]
-
-            # Segment 3: DIP -> TIP
-            seg3 = kp[tip_i] - kp[dip_i]
-            seg3_len = np.linalg.norm(seg3)
-            if seg3_len > 1e-6:
-                seg3_dir = seg3 / seg3_len
-                kp_corrected[tip_i] = kp_corrected[dip_i] + seg3_dir * ref_lengths[2]
-
-        return kp_corrected
+        return correct_segment_lengths(kp)
 
     def get_fingers_data(self) -> dict:
         if self._finished:

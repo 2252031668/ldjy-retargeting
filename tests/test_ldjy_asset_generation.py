@@ -14,7 +14,7 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 class LDJYFrameContractTests(unittest.TestCase):
     def test_right_mano_from_cad_is_a_proper_rotation(self):
-        from tools.ldjy_asset_frames import RIGHT_MANO_FROM_CAD
+        from ldjy_asset_frames import RIGHT_MANO_FROM_CAD
 
         np.testing.assert_allclose(
             RIGHT_MANO_FROM_CAD @ RIGHT_MANO_FROM_CAD.T,
@@ -24,7 +24,7 @@ class LDJYFrameContractTests(unittest.TestCase):
         self.assertAlmostEqual(float(np.linalg.det(RIGHT_MANO_FROM_CAD)), 1.0)
 
     def test_cad_wrist_maps_to_the_mano_origin(self):
-        from tools.ldjy_asset_frames import (
+        from ldjy_asset_frames import (
             RIGHT_MANO_FROM_CAD,
             WRIST_IN_CAD,
             root_palm_translation,
@@ -51,6 +51,9 @@ class LDJYGeneratedURDFTests(unittest.TestCase):
             )
             self.assertLess(
                 model.getFrameId(f"{side}_finger2_tip", pin.BODY), model.nframes
+            )
+            self.assertLess(
+                model.getFrameId(f"{side}_finger2_pad_frame", pin.BODY), model.nframes
             )
 
     def test_right_zero_pose_task_vectors_use_mano_wrist_axes(self):
@@ -202,6 +205,23 @@ class LDJYGeneratedMJCFTests(unittest.TestCase):
                     f"{side}_{finger}_link4_tip",
                 )
                 np.testing.assert_allclose(mjcf_data.site_xpos[site_id], urdf_point, atol=1e-6)
+
+                pad_pose = urdf_data.oMf[
+                    urdf_model.getFrameId(f"{side}_{finger}_pad_frame", pin.BODY)
+                ]
+                pad_site_id = mujoco.mj_name2id(
+                    mjcf_model,
+                    mujoco.mjtObj.mjOBJ_SITE,
+                    f"{side}_{finger}_pad_center",
+                )
+                np.testing.assert_allclose(
+                    mjcf_data.site_xpos[pad_site_id], pad_pose.translation, atol=1e-6
+                )
+                np.testing.assert_allclose(
+                    mjcf_data.site_xmat[pad_site_id].reshape(3, 3),
+                    pad_pose.rotation,
+                    atol=2e-6,
+                )
 
 
 if __name__ == "__main__":

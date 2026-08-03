@@ -129,7 +129,7 @@ class TargetSegment:
 
 def _active_target_segments(optimizer, mediapipe_keypoints, pinch_alphas):
     """Return current FullHand and TipDir target vectors in wrist-local meters."""
-    if not all(
+    if not hasattr(optimizer, "segment_scaling") or not all(
         hasattr(optimizer, method)
         for method in ("_compute_full_hand_vectors", "_compute_tip_vectors", "_compute_tip_dirs")
     ):
@@ -187,7 +187,14 @@ class DebugOverlay:
         if self.hand_side not in {"left", "right"}:
             raise ValueError(f"Unknown hand side {self.hand_side!r}")
 
-    def draw(self, scene, actual_data, optimizer, mediapipe_keypoints, pinch_alphas) -> None:
+    def draw(
+        self,
+        scene,
+        actual_data,
+        optimizer,
+        mediapipe_keypoints,
+        pinch_alphas,
+    ) -> None:
         scene.ngeom = 0
         if self.show_skeleton:
             _draw_hand(

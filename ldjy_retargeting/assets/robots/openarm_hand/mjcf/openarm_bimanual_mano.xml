@@ -122,8 +122,11 @@
                                   <inertial pos="0.00045801 -0.000528605 0.0141481" quat="0 0.707107 0 0.707107" mass="0.0106909" diaginertia="9.67708e-07 7.78738e-07 5.07636e-07" />
                                   <joint name="left_finger1_joint4" pos="0 0 0" axis="1 0 0" range="-0.4683 1.5753" actuatorfrcrange="-0.217 0.217" armature="0.002" damping="0.02" />
                                   <geom name="left_finger1_link4_visual_surface_collision_0" pos="0.0152343 0.0166225 -0.139276" quat="0.996454 0 0.084141 0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="left_finger1_link4" />
-                                  <body name="left_finger1_tip" pos="0 -0.000594788 0.0195907">
+                                  <body name="left_finger1_tip" pos="0 0.00339976 0.0297165">
                                     <site name="left_finger1_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="left_finger1_pad_frame" pos="0.00065 0.00450561 0.0203261" quat="0.50753 -0.492355 0.492355 0.50753">
+                                    <site name="left_finger1_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>
@@ -145,8 +148,11 @@
                                   <inertial pos="0.00045801 -0.000493601 0.0141494" quat="0 0.707107 0 0.707107" mass="0.0106909" diaginertia="9.67708e-07 7.78738e-07 5.07636e-07" />
                                   <joint name="left_finger2_joint4" pos="0 0 0" axis="1 0 0" range="-0.4684 1.5745" actuatorfrcrange="-0.2018 0.2018" armature="0.002" damping="0.02" />
                                   <geom name="left_finger2_link4_visual_surface_collision_0" pos="0.00209004 0.0164618 -0.141053" quat="0.999902 0 -0.0139961 0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="left_finger2_link4" />
-                                  <body name="left_finger2_tip" pos="0 -0.000546318 0.0195921">
+                                  <body name="left_finger2_tip" pos="0 0.00357323 0.0297108">
                                     <site name="left_finger2_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="left_finger2_pad_frame" pos="0.00065 0.00455589 0.0203149" quat="0.506921 -0.492982 0.492982 0.506921">
+                                    <site name="left_finger2_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>
@@ -168,8 +174,11 @@
                                   <inertial pos="0.00045801 0.00010552 0.0141576" quat="0 0.707107 0 0.707107" mass="0.0106909" diaginertia="9.67708e-07 7.78738e-07 5.07636e-07" />
                                   <joint name="left_finger3_joint4" pos="0 0 0" axis="1 0 0" range="-0.4777 1.5634" actuatorfrcrange="-0.2044 0.2044" armature="0.002" damping="0.02" />
                                   <geom name="left_finger3_link4_visual_surface_collision_0" pos="-0.0148329 0.013711 -0.134406" quat="0.996356 0 -0.0852938 0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="left_finger3_link4" />
-                                  <body name="left_finger3_tip" pos="0 0.000283137 0.0195976">
+                                  <body name="left_finger3_tip" pos="1.44289e-12 0.00682693 0.0295041">
                                     <site name="left_finger3_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="left_finger3_pad_frame" pos="0.00065 0.00541136 0.0201039" quat="-0.496375 0.503599 -0.503599 -0.496375">
+                                    <site name="left_finger3_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>
@@ -191,8 +200,11 @@
                                   <inertial pos="0.000463167 -0.014425 0.00292505" quat="0 0.707107 0 0.707107" mass="0.0244635" diaginertia="3.77701e-06 3.666e-06 1.03116e-06" />
                                   <joint name="left_thumb_joint4" pos="0 0 0" axis="1 0 0" range="-1.5568 0.4699" actuatorfrcrange="-0.1468 0.1468" armature="0.002" damping="0.02" />
                                   <geom name="left_thumb_link4_visual_surface_collision_0" pos="-0.0187491 0.0786664 0.0211064" quat="0.64168 0.312552 -0.322608 0.621678" type="mesh" rgba="0.58 0.025 0.035 1" mesh="left_thumb_link4" />
-                                  <body name="left_thumb_tip" pos="0 -0.0303631 0.0024419">
+                                  <body name="left_thumb_tip" pos="0 -0.0399322 0.00321148">
                                     <site name="left_thumb_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="left_thumb_pad_frame" pos="0.00057 -0.0300544 0.012462" quat="0.706538 -0.0283653 0.0283653 0.706538">
+                                    <site name="left_thumb_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>
@@ -214,8 +226,11 @@
                                   <inertial pos="-0.000463169 0.000173456 0.0147175" quat="0 0.707107 0 0.707107" mass="0.0244635" diaginertia="3.77701e-06 3.666e-06 1.03116e-06" />
                                   <joint name="left_finger4_joint4" pos="0 0 0" axis="1 0 0" range="-0.4683 1.5735" actuatorfrcrange="-0.1866 0.1866" armature="0.002" damping="0.02" />
                                   <geom name="left_finger4_link4_visual_surface_collision_0" pos="-0.0261124 0.0149738 -0.110234" quat="0.977182 -0.00189349 -0.212215 -0.00871894" type="mesh" rgba="0.58 0.025 0.035 1" mesh="left_finger4_link4" />
-                                  <body name="left_finger4_tip" pos="0.000151468 -0.00138163 0.0298719">
+                                  <body name="left_finger4_tip" pos="0.000305269 0.00384935 0.0401239">
                                     <site name="left_finger4_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="left_finger4_pad_frame" pos="-0.000527521 0.00552646 0.0306411" quat="0.51451 -0.482439 0.494167 0.508263">
+                                    <site name="left_finger4_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>
@@ -282,8 +297,11 @@
                                   <inertial pos="-0.00045801 -0.000528605 0.0141481" quat="0 0.707107 0 0.707107" mass="0.0106909" diaginertia="9.67708e-07 7.78738e-07 5.07636e-07" />
                                   <joint name="right_finger1_joint4" pos="0 0 0" axis="1 0 0" range="-0.4683 1.5753" actuatorfrcrange="-0.217 0.217" armature="0.002" damping="0.02" />
                                   <geom name="right_finger1_link4_visual_surface_collision_0" pos="-0.0152343 0.0166225 -0.139276" quat="0.996454 0 -0.084141 0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="right_finger1_link4" />
-                                  <body name="right_finger1_tip" pos="0 -0.000594788 0.0195907">
+                                  <body name="right_finger1_tip" pos="0 0.00339976 0.0297165">
                                     <site name="right_finger1_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="right_finger1_pad_frame" pos="-0.00065 0.00450561 0.0203261" quat="0.50753 -0.492355 -0.492355 -0.50753">
+                                    <site name="right_finger1_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>
@@ -305,8 +323,11 @@
                                   <inertial pos="-0.00045801 -0.000493601 0.0141494" quat="0 0.707107 0 0.707107" mass="0.0106909" diaginertia="9.67708e-07 7.78738e-07 5.07636e-07" />
                                   <joint name="right_finger2_joint4" pos="0 0 0" axis="1 0 0" range="-0.4684 1.5745" actuatorfrcrange="-0.2018 0.2018" armature="0.002" damping="0.02" />
                                   <geom name="right_finger2_link4_visual_surface_collision_0" pos="-0.00209004 0.0164618 -0.141053" quat="0.999902 0 0.0139961 0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="right_finger2_link4" />
-                                  <body name="right_finger2_tip" pos="0 -0.000546318 0.0195921">
+                                  <body name="right_finger2_tip" pos="0 0.00357323 0.0297108">
                                     <site name="right_finger2_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="right_finger2_pad_frame" pos="-0.00065 0.00455589 0.0203149" quat="0.506921 -0.492982 -0.492982 -0.506921">
+                                    <site name="right_finger2_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>
@@ -328,8 +349,11 @@
                                   <inertial pos="-0.00045801 0.00010552 0.0141576" quat="0 0.707107 0 0.707107" mass="0.0106909" diaginertia="9.67708e-07 7.78738e-07 5.07636e-07" />
                                   <joint name="right_finger3_joint4" pos="0 0 0" axis="1 0 0" range="-0.4777 1.5634" actuatorfrcrange="-0.2044 0.2044" armature="0.002" damping="0.02" />
                                   <geom name="right_finger3_link4_visual_surface_collision_0" pos="0.0148329 0.013711 -0.134406" quat="0.996356 0 0.0852938 0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="right_finger3_link4" />
-                                  <body name="right_finger3_tip" pos="-1.02832e-12 0.000283137 0.0195976">
+                                  <body name="right_finger3_tip" pos="-1.50935e-12 0.00682693 0.0295041">
                                     <site name="right_finger3_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="right_finger3_pad_frame" pos="-0.00065 0.00541136 0.0201039" quat="-0.496375 0.503599 0.503599 0.496375">
+                                    <site name="right_finger3_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>
@@ -351,8 +375,11 @@
                                   <inertial pos="-0.000463167 -0.014425 0.00292505" quat="0 0.707107 0 0.707107" mass="0.0244635" diaginertia="3.77701e-06 3.666e-06 1.03116e-06" />
                                   <joint name="right_thumb_joint4" pos="0 0 0" axis="1 0 0" range="-1.5568 0.4699" actuatorfrcrange="-0.1468 0.1468" armature="0.002" damping="0.02" />
                                   <geom name="right_thumb_link4_visual_surface_collision_0" pos="0.0187491 0.0786664 0.0211064" quat="0.64168 0.312552 0.322608 -0.621678" type="mesh" rgba="0.58 0.025 0.035 1" mesh="right_thumb_link4" />
-                                  <body name="right_thumb_tip" pos="0 -0.0303631 0.0024419">
+                                  <body name="right_thumb_tip" pos="0 -0.0399322 0.00321148">
                                     <site name="right_thumb_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="right_thumb_pad_frame" pos="-0.00057 -0.0300544 0.012462" quat="0.706538 -0.0283653 -0.0283653 -0.706538">
+                                    <site name="right_thumb_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>
@@ -374,8 +401,11 @@
                                   <inertial pos="0.000463169 0.000173456 0.0147175" quat="0 0.707107 0 0.707107" mass="0.0244635" diaginertia="3.77701e-06 3.666e-06 1.03116e-06" />
                                   <joint name="right_finger4_joint4" pos="0 0 0" axis="1 0 0" range="-0.4683 1.5735" actuatorfrcrange="-0.1866 0.1866" armature="0.002" damping="0.02" />
                                   <geom name="right_finger4_link4_visual_surface_collision_0" pos="0.0261124 0.0149738 -0.110234" quat="0.977182 -0.00189349 0.212215 0.00871894" type="mesh" rgba="0.58 0.025 0.035 1" mesh="right_finger4_link4" />
-                                  <body name="right_finger4_tip" pos="-0.000151468 -0.00138163 0.0298719">
+                                  <body name="right_finger4_tip" pos="-0.000305269 0.00384935 0.0401239">
                                     <site name="right_finger4_tip_site" pos="0 0 0" size="0.003" group="4" />
+                                  </body>
+                                  <body name="right_finger4_pad_frame" pos="0.000527521 0.00552646 0.0306411" quat="0.51451 -0.482439 -0.494167 -0.508263">
+                                    <site name="right_finger4_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
                               </body>

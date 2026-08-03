@@ -39,6 +39,28 @@ tuning = [
 gui = [
     "PySide6-Essentials>=6.8",
 ]
+wilor = [
+    "PySide6-Essentials>=6.8",
+    "chumpy @ git+https://github.com/mattloper/chumpy.git",
+    "dill>=0.3,<0.4",
+    "einops>=0.7,<0.9",
+    "mujoco>=3.6",
+    "pytorch-lightning>=2.4,<2.6",
+    "pyrender>=0.1.45",
+    "scikit-image>=0.22,<0.26",
+    "smplx==0.1.28",
+    "timm==0.9.16",
+    "torch==2.7.1",
+    "torchvision==0.22.1",
+    "trimesh>=4.4,<5",
+    "ultralytics==8.1.34",
+    "yacs>=0.1.8",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+]
 
 [tool.setuptools.packages.find]
 include = ["ldjy_retargeting*"]
@@ -49,10 +71,23 @@ include = ["ldjy_retargeting*"]
 [tool.uv]
 override-dependencies = ["numpy>=2"]
 
+# Upstream chumpy's legacy setup.py imports pip during its wheel build.
+[tool.uv.extra-build-dependencies]
+chumpy = ["pip"]
+
 [[tool.uv.index]]
 name = "tsinghua"
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
 
 [tool.setuptools.package-data]
 "ldjy_retargeting" = [

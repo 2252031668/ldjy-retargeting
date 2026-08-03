@@ -186,6 +186,47 @@ def add_tip_sites(
         )
 
 
+def generated_pad_frame_origins(
+    urdf_path: Path, side: str
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Read the canonical link4-local pad transforms from the generated URDF."""
+    urdf_root = ET.parse(urdf_path).getroot()
+    result = {}
+    for finger in FINGERS:
+        joint = urdf_root.find(f"joint[@name='{side}_{finger}_pad_frame_fixed']")
+        if joint is None:
+            raise ValueError(f"Missing generated pad frame for {side}_{finger}")
+        origin = joint.find("origin")
+        if origin is None:
+            raise ValueError(f"Missing pad-frame origin for {side}_{finger}")
+        position = np.fromstring(origin.attrib["xyz"], sep=" ")
+        rotation = Rotation.from_euler(
+            "xyz", np.fromstring(origin.attrib.get("rpy", "0 0 0"), sep=" ")
+        ).as_matrix()
+        result[finger] = position, rotation
+    return result
+
+
+def add_pad_sites(root: ET.Element, urdf_path: Path, side: str) -> None:
+    """Expose the generated URDF's canonical pad frames as MuJoCo sites."""
+    bodies = {body.attrib["name"]: body for body in root.findall(".//body")}
+    for finger, (position, rotation) in generated_pad_frame_origins(urdf_path, side).items():
+        quaternion = Rotation.from_matrix(rotation).as_quat()[[3, 0, 1, 2]]
+        ET.SubElement(
+            bodies[f"{side}_{finger}_link4"],
+            "site",
+            {
+                "name": f"{side}_{finger}_pad_center",
+                "type": "ellipsoid",
+                "pos": numbers(position),
+                "quat": numbers(quaternion),
+                "size": "0.007 0.006 0.001",
+                "group": "4",
+                "rgba": "0.9 0.3 0.1 0.5",
+            },
+        )
+
+
 def build_model(
     side: str,
     *,
@@ -208,6 +249,7 @@ def build_model(
         geom.attrib.update({"contype": "0", "conaffinity": "0", "group": "1", "density": "0"})
     add_collision_model(root, source_model, side)
     add_tip_sites(root, source_model, side, offsets)
+    add_pad_sites(root, source, side)
 
     actuator = ET.SubElement(root, "actuator")
     for joint_id in range(source_model.njnt):

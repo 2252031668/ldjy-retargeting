@@ -1,0 +1,4 @@
+[submodule "third_party/WiLoR"]
+	path = third_party/WiLoR
+	url = https://github.com/rolpotamias/WiLoR.git
+	ignore = untracked

@@ -2,17 +2,17 @@ version: 1
 units: mm
 fingers:
   thumb:
-    axis_mm: -9.6
+    axis_mm: 0.0
     surface_mm: 0.0
   finger1:
-    axis_mm: -10.0
-    surface_mm: 0.0
+    axis_mm: 0.0
+    surface_mm: 4.3
   finger2:
-    axis_mm: -10.0
-    surface_mm: 0.0
+    axis_mm: 0.0
+    surface_mm: 4.4
   finger3:
-    axis_mm: -10.0
-    surface_mm: 0.0
+    axis_mm: 0.0
+    surface_mm: 6.4
   finger4:
-    axis_mm: -10.0
-    surface_mm: 0.0
+    axis_mm: 0.0
+    surface_mm: 5.7

@@ -83,6 +83,10 @@ try:
     from input_devices.webcam_mediapipe import WebcamMediaPipe
 except ImportError:
     WebcamMediaPipe = None
+try:
+    from input_devices.webcam_wilor import WebcamWiLoR
+except ImportError:
+    WebcamWiLoR = None
 
 
 DEBUG_MESH_ALPHA = 0.3
@@ -239,6 +243,11 @@ def run_teleop(
             video_config=video_config,
             show_video=show_video,
         ),
+        "webcam_wilor": lambda: WebcamWiLoR(
+            hand_side=hand_side,
+            camera_index=camera_index,
+            show_video=show_video,
+        ),
     }
     if input_device_type not in device_map:
         raise ValueError(f"Unknown input device type: {input_device_type}")
@@ -255,6 +264,8 @@ def run_teleop(
         raise ImportError("zed mode requires mediapipe, opencv-python, and pyzed")
     if input_device_type == "webcam" and WebcamMediaPipe is None:
         raise ImportError("webcam mode requires mediapipe and opencv-python")
+    if input_device_type == "webcam_wilor" and WebcamWiLoR is None:
+        raise ImportError("webcam_wilor mode requires: uv sync --extra wilor")
 
     input_device = device_map[input_device_type]()
 
@@ -330,8 +341,6 @@ def run_teleop(
                     ),
                 })
 
-            # Retarget to joint angles. Debug mode also keeps the transformed
-            # keypoints, adaptive blend weights, and loss for the overlay.
             if debug:
                 qpos, debug_frame = retargeter.retarget_verbose(fingers_pose)
             else:
@@ -369,17 +378,27 @@ def run_teleop(
                 for _ in range(physics_steps):
                     mujoco.mj_step(model, data)
                 if debug_overlay is not None:
+                    overlay_keypoints = debug_frame.get(
+                        "mediapipe_kp", debug_frame.get("joints_task_m")
+                    )
+                    overlay_alpha = np.asarray(
+                        debug_frame.get("pinch_alphas", np.zeros(5)), dtype=np.float64
+                    )
+                    if overlay_alpha.shape == (4,):
+                        overlay_alpha = np.r_[overlay_alpha.max(initial=0.0), overlay_alpha]
                     debug_overlay.draw(
                         viewer.user_scn,
                         data,
                         retargeter.optimizer,
-                        debug_frame["mediapipe_kp"],
-                        debug_frame.get("pinch_alphas", np.zeros(5)),
+                        overlay_keypoints,
+                        overlay_alpha,
                     )
             viewer.sync()
 
             if debug and time.monotonic() - last_debug_print >= 1.0:
-                pinch_alphas = debug_frame.get("pinch_alphas", np.zeros(5))
+                pinch_alphas = np.asarray(debug_frame.get("pinch_alphas", np.zeros(5)))
+                if pinch_alphas.shape == (4,):
+                    pinch_alphas = np.r_[pinch_alphas.max(initial=0.0), pinch_alphas]
                 modes = [mode_label(alpha) for alpha in pinch_alphas]
                 print(
                     format_joint_diagnostics(
@@ -459,7 +478,7 @@ Examples:
 
     # Input device options
     parser.add_argument('--input', type=str, default=None,
-                        choices=['visionpro', 'mediapipe_replay', 'video', 'webcam', 'realsense', 'zed'],
+                        choices=['visionpro', 'mediapipe_replay', 'video', 'webcam', 'webcam_wilor', 'realsense', 'zed'],
                         help='Input device type')
 
     # Shortcut options
@@ -492,7 +511,7 @@ Examples:
     parser.add_argument('--zed', action='store_true',
                         help='Use ZED camera with MediaPipe hand detection (shortcut for --input zed)')
     parser.add_argument('--show-video', action='store_true',
-                        help='Show video with MediaPipe landmarks overlay (video/webcam/realsense/zed mode)')
+                        help='Show input detection overlay (video/webcam/webcam_wilor/realsense/zed mode)')
     parser.add_argument('--debug', action='store_true',
                         help='Show actual-pose and target-vector overlays plus joint diagnostics')
 
@@ -523,7 +542,7 @@ Examples:
 
     # Auto-switch config for non-AVP input devices
     if args.config == 'config/adaptive_analytical_avp.yaml':
-        if input_device_type in ("realsense", "video", "webcam", "zed"):
+        if input_device_type in ("realsense", "video", "webcam", "webcam_wilor", "zed"):
             args.config = 'config/adaptive_analytical_video.yaml'
 
     # Validate paths

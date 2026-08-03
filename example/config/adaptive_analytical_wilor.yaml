@@ -7,8 +7,8 @@ retarget:
   thumb_skip_pip: false
   w_hyper: 0.0
   w_couple: 0.0
-  w_pos: 1.0
-  w_dir: 10.0
+  w_pos: 1.5
+  w_dir: 8.0
   project_tip_dir: false
   w_full_hand: 1.0
   segment_scaling:
@@ -75,13 +75,13 @@ tip_offsets:
     surface_mm: 0.0
   finger1:
     axis_mm: 0.0
-    surface_mm: 0.0
+    surface_mm: 4.3
   finger2:
     axis_mm: 0.0
-    surface_mm: 0.0
+    surface_mm: 4.4
   finger3:
     axis_mm: 0.0
-    surface_mm: 0.0
+    surface_mm: 6.4
   finger4:
     axis_mm: 0.0
-    surface_mm: 0.0
+    surface_mm: 5.7

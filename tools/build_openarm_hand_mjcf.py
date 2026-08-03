@@ -260,6 +260,28 @@ def add_tip_sites(root: ET.Element) -> None:
             )
 
 
+def add_pad_sites(root: ET.Element) -> None:
+    """Expose the URDF's semantic finger-pad frames in the debug MJCF."""
+    bodies = {body.attrib["name"]: body for body in root.findall(".//body")}
+    for side in ("left", "right"):
+        for finger in FINGERS:
+            frame_name = f"{side}_{finger}_pad_frame"
+            if frame_name not in bodies:
+                raise ValueError(f"Missing generated pad frame {frame_name}")
+            ET.SubElement(
+                bodies[frame_name],
+                "site",
+                {
+                    "name": f"{side}_{finger}_pad_center",
+                    "type": "ellipsoid",
+                    "pos": "0 0 0",
+                    "size": "0.007 0.005 0.001",
+                    "group": "4",
+                    "rgba": "0.9 0.3 0.1 0.5",
+                },
+            )
+
+
 def add_position_actuators(root: ET.Element, model: mujoco.MjModel) -> None:
     existing = root.find("actuator")
     if existing is not None:
@@ -307,6 +329,7 @@ def build_mjcf() -> Path:
     model = compile_root(root)
     exclude_zero_pose_visual_mesh_overlaps(root, model)
     add_tip_sites(root)
+    add_pad_sites(root)
     add_position_actuators(root, model)
     ET.indent(root, space="  ")
     OUTPUT_MJCF.parent.mkdir(parents=True, exist_ok=True)
