@@ -146,3 +146,32 @@ def task_frame_axes(
         )
     surface_local = surface_local - axis_local * np.dot(surface_local, axis_local)
     return axis_local, _unit(surface_local, name="local nail-to-pulp")
+
+
+def task_frame_distal(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    finger: str,
+    *,
+    side: str = "",
+) -> np.ndarray:
+    """Compute the PIP->DIP axis in the link-4 local frame.
+
+    Returns only the distal axis, without any hardcoded surface reference.
+    """
+    if finger not in FINGERS:
+        raise ValueError(f"unsupported finger: {finger}")
+    prefix = f"{side}_" if side else ""
+    joint3 = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_JOINT, f"{prefix}{finger}_joint3"
+    )
+    joint4 = mujoco.mj_name2id(
+        model, mujoco.mjtObj.mjOBJ_JOINT, f"{prefix}{finger}_joint4"
+    )
+    if min(joint3, joint4) < 0:
+        raise ValueError(f"missing joints for {prefix}{finger}")
+    axis_world = _unit(data.xanchor[joint4] - data.xanchor[joint3], name="PIP->DIP")
+    body_id = model.jnt_bodyid[joint4]
+    world_from_link4 = data.xmat[body_id].reshape(3, 3)
+    axis_local = world_from_link4.T @ axis_world
+    return _unit(axis_local, name="local PIP->DIP")

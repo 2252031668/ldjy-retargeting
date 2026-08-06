@@ -52,9 +52,6 @@ class LDJYGeneratedURDFTests(unittest.TestCase):
             self.assertLess(
                 model.getFrameId(f"{side}_finger2_tip", pin.BODY), model.nframes
             )
-            self.assertLess(
-                model.getFrameId(f"{side}_finger2_pad_frame", pin.BODY), model.nframes
-            )
 
     def test_right_zero_pose_task_vectors_use_mano_wrist_axes(self):
         import pinocchio as pin
@@ -206,22 +203,66 @@ class LDJYGeneratedMJCFTests(unittest.TestCase):
                 )
                 np.testing.assert_allclose(mjcf_data.site_xpos[site_id], urdf_point, atol=1e-6)
 
-                pad_pose = urdf_data.oMf[
-                    urdf_model.getFrameId(f"{side}_{finger}_pad_frame", pin.BODY)
-                ]
-                pad_site_id = mujoco.mj_name2id(
-                    mjcf_model,
-                    mujoco.mjtObj.mjOBJ_SITE,
-                    f"{side}_{finger}_pad_center",
+
+    def test_calibrated_pad_points_match_between_generated_urdf_and_mjcf(self):
+        import mujoco
+        import pinocchio as pin
+        from build_ldjy_mjcf import build_model
+        from build_ldjy_urdf import build_urdf
+        from ldjy_retargeting.pad_calibration import link4_visual_surface
+
+        pad_points = {
+            "thumb": np.array([0.001, 0.002, 0.003]),
+            "finger1": np.array([0.004, 0.005, 0.006]),
+            "finger2": np.array([0.007, 0.008, 0.009]),
+            "finger3": np.array([0.010, 0.011, 0.012]),
+            "finger4": np.array([0.013, 0.014, 0.015]),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "meshes").symlink_to(ASSET / "meshes", target_is_directory=True)
+            urdf_dir = root / "urdf"
+            mjcf_dir = root / "mjcf"
+            for side in ("right", "left"):
+                urdf_path = build_urdf(side, pad_points=pad_points, output_dir=urdf_dir)
+                mjcf_path = build_model(
+                    side, pad_points=pad_points, urdf_dir=urdf_dir, output_dir=mjcf_dir
                 )
-                np.testing.assert_allclose(
-                    mjcf_data.site_xpos[pad_site_id], pad_pose.translation, atol=1e-6
-                )
-                np.testing.assert_allclose(
-                    mjcf_data.site_xmat[pad_site_id].reshape(3, 3),
-                    pad_pose.rotation,
-                    atol=2e-6,
-                )
+                urdf_model = pin.buildModelFromUrdf(str(urdf_path))
+                urdf_data = urdf_model.createData()
+                pin.forwardKinematics(urdf_model, urdf_data, np.zeros(urdf_model.nq))
+                pin.updateFramePlacements(urdf_model, urdf_data)
+                mjcf_model = mujoco.MjModel.from_xml_path(str(mjcf_path))
+                mjcf_data = mujoco.MjData(mjcf_model)
+                mujoco.mj_forward(mjcf_model, mjcf_data)
+                source_model = mujoco.MjModel.from_xml_path(str(urdf_path))
+                source_data = mujoco.MjData(source_model)
+                mujoco.mj_forward(source_model, source_data)
+                for finger in pad_points:
+                    pad_pose = urdf_data.oMf[
+                        urdf_model.getFrameId(f"{side}_{finger}_pad", pin.BODY)
+                    ]
+                    site_id = mujoco.mj_name2id(
+                        mjcf_model, mujoco.mjtObj.mjOBJ_SITE, f"{side}_{finger}_pad_center"
+                    )
+                    np.testing.assert_allclose(
+                        mjcf_data.site_xpos[site_id], pad_pose.translation, atol=1e-6
+                    )
+                    local_position = pad_points[finger].copy()
+                    if side == "left":
+                        local_position[0] *= -1.0
+                    surface = link4_visual_surface(source_model, source_data, finger, side)
+                    surface_point = surface.project(local_position)
+                    expected_normal = surface.normals[surface_point.face]
+                    if expected_normal @ (surface.position(surface_point) - surface.vertices.mean(axis=0)) < 0:
+                        expected_normal = -expected_normal
+                    body_id = mujoco.mj_name2id(
+                        mjcf_model, mujoco.mjtObj.mjOBJ_BODY, f"{side}_{finger}_link4"
+                    )
+                    site_normal_local = mjcf_data.xmat[body_id].reshape(3, 3).T @ (
+                        mjcf_data.site_xmat[site_id].reshape(3, 3)[:, 2]
+                    )
+                    np.testing.assert_allclose(site_normal_local, expected_normal, atol=1e-6)
 
 
 if __name__ == "__main__":

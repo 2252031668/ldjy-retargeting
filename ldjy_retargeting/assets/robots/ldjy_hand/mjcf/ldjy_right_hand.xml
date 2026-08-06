@@ -2,27 +2,27 @@
 <mujoco model="ldjy_right_hand">
   <compiler angle="radian" />
   <asset>
-    <mesh name="palm" file="../meshes/palm.stl" />
-    <mesh name="finger1_link1" file="../meshes/finger1_link1.stl" />
-    <mesh name="finger1_link2" file="../meshes/finger1_link2.stl" />
-    <mesh name="finger1_link3" file="../meshes/finger1_link3.stl" />
-    <mesh name="finger1_link4" file="../meshes/finger1_link4.stl" />
-    <mesh name="finger2_link1" file="../meshes/finger2_link1.stl" />
-    <mesh name="finger2_link2" file="../meshes/finger2_link2.stl" />
-    <mesh name="finger2_link3" file="../meshes/finger2_link3.stl" />
-    <mesh name="finger2_link4" file="../meshes/finger2_link4.stl" />
-    <mesh name="finger3_link1" file="../meshes/finger3_link1.stl" />
-    <mesh name="finger3_link2" file="../meshes/finger3_link2.stl" />
-    <mesh name="finger3_link3" file="../meshes/finger3_link3.stl" />
-    <mesh name="finger3_link4" file="../meshes/finger3_link4.stl" />
-    <mesh name="thumb_link1" file="../meshes/thumb_link1.stl" />
-    <mesh name="thumb_link2" file="../meshes/thumb_link2.stl" />
-    <mesh name="thumb_link3" file="../meshes/thumb_link3.stl" />
-    <mesh name="thumb_link4" file="../meshes/thumb_link4.stl" />
-    <mesh name="finger4_link1" file="../meshes/finger4_link1.stl" />
-    <mesh name="finger4_link2" file="../meshes/finger4_link2.stl" />
-    <mesh name="finger4_link3" file="../meshes/finger4_link3.stl" />
-    <mesh name="finger4_link4" file="../meshes/finger4_link4.stl" />
+    <mesh name="palm" content_type="model/stl" file="../meshes/palm.stl" />
+    <mesh name="finger1_link1" content_type="model/stl" file="../meshes/finger1_link1.stl" />
+    <mesh name="finger1_link2" content_type="model/stl" file="../meshes/finger1_link2.stl" />
+    <mesh name="finger1_link3" content_type="model/stl" file="../meshes/finger1_link3.stl" />
+    <mesh name="finger1_link4" content_type="model/stl" file="../meshes/finger1_link4.stl" />
+    <mesh name="finger2_link1" content_type="model/stl" file="../meshes/finger2_link1.stl" />
+    <mesh name="finger2_link2" content_type="model/stl" file="../meshes/finger2_link2.stl" />
+    <mesh name="finger2_link3" content_type="model/stl" file="../meshes/finger2_link3.stl" />
+    <mesh name="finger2_link4" content_type="model/stl" file="../meshes/finger2_link4.stl" />
+    <mesh name="finger3_link1" content_type="model/stl" file="../meshes/finger3_link1.stl" />
+    <mesh name="finger3_link2" content_type="model/stl" file="../meshes/finger3_link2.stl" />
+    <mesh name="finger3_link3" content_type="model/stl" file="../meshes/finger3_link3.stl" />
+    <mesh name="finger3_link4" content_type="model/stl" file="../meshes/finger3_link4.stl" />
+    <mesh name="thumb_link1" content_type="model/stl" file="../meshes/thumb_link1.stl" />
+    <mesh name="thumb_link2" content_type="model/stl" file="../meshes/thumb_link2.stl" />
+    <mesh name="thumb_link3" content_type="model/stl" file="../meshes/thumb_link3.stl" />
+    <mesh name="thumb_link4" content_type="model/stl" file="../meshes/thumb_link4.stl" />
+    <mesh name="finger4_link1" content_type="model/stl" file="../meshes/finger4_link1.stl" />
+    <mesh name="finger4_link2" content_type="model/stl" file="../meshes/finger4_link2.stl" />
+    <mesh name="finger4_link3" content_type="model/stl" file="../meshes/finger4_link3.stl" />
+    <mesh name="finger4_link4" content_type="model/stl" file="../meshes/finger4_link4.stl" />
     <mesh name="right_palm_collision_mesh" file="../meshes/collision/palm_collision.stl" />
     <mesh name="right_finger1_link4_collision_mesh" file="../meshes/collision/finger1_link4_collision.stl" />
     <mesh name="right_finger2_link4_collision_mesh" file="../meshes/collision/finger2_link4_collision.stl" />
@@ -52,7 +52,7 @@
                 <geom name="finger1_link4_visual_mesh_collision" pos="-0.0152343 0.0166225 -0.139276" quat="0.996454 0 -0.084141 0" type="mesh" rgba="0.72 0.76 0.78 1" mesh="finger1_link4" contype="0" conaffinity="0" group="1" density="0" />
                 <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_finger1_link4_collision" type="mesh" mesh="right_finger1_link4_collision_mesh" pos="-0.000613015323131 -0.000751007769692 0.0129531901209" quat="0.706814805038 0.0217969793935 -0.0203182523618 0.706770749033" />
                 <site name="right_finger1_link4_tip" pos="-3.80000958042e-14 0.00339976361945 0.0297165365339" group="4" size="0.003" />
-                <site name="right_finger1_pad_center" type="ellipsoid" pos="-0.000650000000021 0.00450561490379 0.0203260926594" quat="0.507530002605 -0.492354848109 -0.492354848113 -0.5075300026" size="0.007 0.006 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
+                <site name="right_finger1_pad_center" pos="-0.000887896997077 -0.00739003330634 0.0202260113406" group="4" size="0.003" quat="0.813143900066 0.582062709495 -4.38881268244e-08 0" />
               </body>
               <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_finger1_link3_capsule_1" type="capsule" fromto="0.0155714867844 0.0309032193919 0.125119586654 0.0140981673442 0.0330802464564 0.152737091909" size="0.007647541322" />
             </body>
@@ -77,7 +77,7 @@
                 <geom name="finger2_link4_visual_mesh_collision" pos="-0.00209004 0.0164618 -0.141053" quat="0.999902 0 0.0139961 0" type="mesh" rgba="0.72 0.76 0.78 1" mesh="finger2_link4" contype="0" conaffinity="0" group="1" density="0" />
                 <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_finger2_link4_collision" type="mesh" mesh="right_finger2_link4_collision_mesh" pos="-0.000613015197387 -0.000718959007159 0.012955010255" quat="0.707361367738 0.0209447908439 -0.0194172335227 0.706274863074" />
                 <site name="right_finger2_link4_tip" pos="-4.24862098176e-14 0.00357323373205 0.0297108214506" group="4" size="0.003" />
-                <site name="right_finger2_pad_center" type="ellipsoid" pos="-0.000650000000024 0.0045558878015 0.0203148834496" quat="0.506920565505 -0.492982292043 -0.492982292048 -0.5069205655" size="0.007 0.006 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
+                <site name="right_finger2_pad_center" pos="-0.000345141712275 -0.00717387617459 0.0207279644612" group="4" size="0.003" quat="0.813862253444 0.581057856344 8.91238821311e-08 -0" />
               </body>
               <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_finger2_link3_capsule_3" type="capsule" fromto="0.0155065558832 -0.00337680851986 0.130314495847 0.0139644114366 -0.00656336551985 0.157830025253" size="0.007647541322" />
             </body>
@@ -102,7 +102,7 @@
                 <geom name="finger3_link4_visual_mesh_collision" pos="0.0148329 0.013711 -0.134406" quat="0.996356 0 0.0852938 0" type="mesh" rgba="0.72 0.76 0.78 1" mesh="finger3_link4" contype="0" conaffinity="0" group="1" density="0" />
                 <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_finger3_link4_collision" type="mesh" mesh="right_finger3_link4_collision_mesh" pos="-0.000613014796203 -0.000170172510822 0.012973829382" quat="0.707092608758 0.00596761226336 -0.00447690063722 0.707081598971" />
                 <site name="right_finger3_link4_tip" pos="-1.50703689548e-12 0.00682692933065 0.029504138434" group="4" size="0.003" />
-                <site name="right_finger3_pad_center" type="ellipsoid" pos="-0.000650000001009 0.00541135856617 0.0201039253082" quat="-0.496375360591 0.503598551798 0.503598551826 0.496375360613" size="0.007 0.006 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
+                <site name="right_finger3_pad_center" pos="-0.000646578946653 -0.00638898613424 0.0207611224125" group="4" size="0.003" quat="0.82597694355 0.56370390164 7.23687627063e-08 -0" />
               </body>
               <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_finger3_link3_capsule_5" type="capsule" fromto="0.013954950482 -0.0295270590581 0.120378528901 0.0112427837685 -0.0354428778164 0.14734673154" size="0.007647541322" />
             </body>
@@ -127,7 +127,7 @@
                 <geom name="thumb_link4_visual_mesh_collision" pos="0.0187491 0.0786664 0.0211064" quat="0.64168 0.312552 0.322608 -0.621678" type="mesh" rgba="0.72 0.76 0.78 1" mesh="thumb_link4" contype="0" conaffinity="0" group="1" density="0" />
                 <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_thumb_link4_collision" type="mesh" mesh="right_thumb_link4_collision_mesh" pos="-0.000573540532115 -0.0166184318556 0.00348971146255" quat="0.555180784144 0.441975409096 0.438185804899 -0.551747437744" />
                 <site name="right_thumb_link4_tip" pos="-4.54961771716e-19 -0.0399322083726 0.00321148415111" group="4" size="0.003" />
-                <site name="right_thumb_pad_center" type="ellipsoid" pos="-0.00057 -0.030054383314 0.0124619777339" quat="0.706537621378 -0.0283652882931 -0.0283652882933 -0.706537621375" size="0.007 0.006 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
+                <site name="right_thumb_pad_center" pos="-3.66216494593e-05 -0.028500341515 0.0127727528254" group="4" size="0.003" quat="0.996776668744 0.0802263837422 -8.4146703877e-08 0" />
               </body>
               <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_thumb_link3_capsule_7" type="capsule" fromto="-0.0224785066783 -0.0406035151552 -0.0462136844787 -0.0215375765194 -0.0663298737027 -0.0565532125048" size="0.007647541322" />
             </body>
@@ -152,7 +152,7 @@
                 <geom name="finger4_link4_visual_mesh_collision" pos="0.0261124 0.0149738 -0.110234" quat="0.977182 -0.00189349 0.212215 0.00871894" type="mesh" rgba="0.72 0.76 0.78 1" mesh="finger4_link4" contype="0" conaffinity="0" group="1" density="0" />
                 <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_finger4_link4_collision" type="mesh" mesh="right_finger4_link4_collision_mesh" pos="0.000573547309397 8.26267323101e-05 0.0169806743162" quat="0.706936205939 0.00585896307912 -0.00504043635862 0.707235086294" />
                 <site name="right_finger4_link4_tip" pos="-0.000305268631514 0.00384935354031 0.0401239267378" group="4" size="0.003" />
-                <site name="right_finger4_pad_center" type="ellipsoid" pos="0.000527520904337 0.00552645560218 0.0306411188614" quat="0.514509851182 -0.482438661733 -0.494167255698 -0.50826299698" size="0.007 0.006 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
+                <site name="right_finger4_pad_center" pos="0.000717825545034 -0.00652127833713 0.030480346822" group="4" size="0.003" quat="0.825809131711 0.563949712282 5.77655233575e-08 -0" />
               </body>
               <geom contype="1" conaffinity="1" density="0" friction="0.7 0.005 0.0001" solref="0.02 1.5" solimp="0.9 0.95 0.001 0.5 2" condim="3" rgba="0.55 0.7 0.9 0" name="right_finger4_link3_capsule_11" type="capsule" fromto="0.0112689075126 -0.0592953038173 0.0728942241105 0.0150370247899 -0.0737463703961 0.0962738023872" size="0.007647541322" />
             </body>

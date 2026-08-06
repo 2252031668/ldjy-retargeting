@@ -63,8 +63,9 @@ WiLoR 输入已是米制 MANO 关键点，不经过 MediaPipe 的 `z_scale`、0.
 ## 资产重建
 
 默认模型是 MANO wrist 坐标对齐的左右手生成资产，而不是原始 CAD `palm` 坐标。原始
-单手 URDF、生成脚本、坐标契约与验证说明见
-[LDJY 手部资产](ldjy_retargeting/assets/robots/ldjy_hand/README.md)。更新原始 URDF 后：
+单手 URDF、生成脚本、坐标契约、指腹标定与 MANO 零位拟合说明见
+[指腹标定和 LDJY 零位拟合 MANO](%E6%8C%87%E8%85%B9%E6%A0%87%E5%AE%9A%E5%92%8Cldjy%E9%9B%B6%E4%BD%8D%E6%8B%9F%E5%90%88mano.md)。
+更新原始 URDF 后：
 
 ```bash
 uv run python tools/build_ldjy_urdf.py
@@ -99,7 +100,7 @@ ldjy_retargeting/
   robot.py                        Pinocchio 运动学封装和关节限位
   tuning/                         图形调参的参数 schema、验证、YAML 会话、记录与回放状态
   viz/                            MuJoCo debug 叠加绘制
-  assets/robots/ldjy_hand/        MANO 对齐的左右 URDF、MJCF、网格和资产生成说明
+  assets/robots/ldjy_hand/        MANO 对齐的左右 URDF、MJCF、网格和标定 YAML
   assets/robots/openarm_hand/     固定根 OpenArm 双臂、MANO task frame 与 54-DOF MJCF
 
 example/
@@ -112,6 +113,7 @@ example/
 tools/                            LDJY URDF/MJCF 资产生成与验证工具
 tests/                            算法、资产、输入适配器、调参会话和 GUI CLI 回归测试
 docs/                             中文开发者文档与设计/实施记录
+指腹标定和ldjy零位拟合mano.md     LDJY/MANO 指腹标定、零位叠加拟合与参考参数保存
 ```
 
 ## 实时图形调参：`tuning_gui.py`
@@ -211,6 +213,8 @@ WiLoR 直接读取保存的 MANO 数据。底层仍依赖 `InputDeviceBase` 的�
 
 更多内容：
 
+- [指腹标定和 LDJY 零位拟合 MANO](%E6%8C%87%E8%85%B9%E6%A0%87%E5%AE%9A%E5%92%8Cldjy%E9%9B%B6%E4%BD%8D%E6%8B%9F%E5%90%88mano.md)
+- [飞书项目记录](https://zcn3p0621d6z.feishu.cn/wiki/RdHqwXGQ4iKmsIkSL3Kcd666nhg)
 - [仓库功能说明](docs/repository-features.md)
 - [启动方式](docs/startup-modes.md)
 - [自适应算法与 LDJY 关节映射](docs/adaptive-algorithm.md)

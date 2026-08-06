@@ -632,35 +632,35 @@
     <child link="right_finger4_tip" />
     <origin xyz="-0.000305268631489 0.00384935354031 0.0401239267378" rpy="0 0 0" />
   </joint>
-  <link name="right_thumb_pad_frame" />
-  <joint name="right_thumb_pad_frame_fixed" type="fixed">
-    <parent link="right_thumb_link4" />
-    <child link="right_thumb_pad_frame" />
-    <origin xyz="-0.00057 -0.030054383314 0.0124619777339" rpy="0 -0.0802506835855 -1.57079632679" />
-  </joint>
-  <link name="right_finger1_pad_frame" />
-  <joint name="right_finger1_pad_frame_fixed" type="fixed">
+  <link name="right_finger1_pad" />
+  <joint name="right_finger1_pad_fixed" type="fixed">
     <parent link="right_finger1_link4" />
-    <child link="right_finger1_pad_frame" />
-    <origin xyz="-0.000650000000021 0.00450561490379 0.0203260926594" rpy="4.01212396639e-12 -1.54044485282 -1.57079632679" />
+    <child link="right_finger1_pad" />
+    <origin xyz="-0.000887896997077 -0.00739003330634 0.0202260113406" rpy="0 0 0" />
   </joint>
-  <link name="right_finger2_pad_frame" />
-  <joint name="right_finger2_pad_frame_fixed" type="fixed">
+  <link name="right_finger2_pad" />
+  <joint name="right_finger2_pad_fixed" type="fixed">
     <parent link="right_finger2_link4" />
-    <child link="right_finger2_pad_frame" />
-    <origin xyz="-0.000650000000024 0.0045558878015 0.0203148834496" rpy="4.75341987993e-12 -1.54291887718 -1.57079632679" />
+    <child link="right_finger2_pad" />
+    <origin xyz="-0.000345141712275 -0.00717387617459 0.0207279644612" rpy="0 0 0" />
   </joint>
-  <link name="right_finger3_pad_frame" />
-  <joint name="right_finger3_pad_frame_fixed" type="fixed">
+  <link name="right_finger3_pad" />
+  <joint name="right_finger3_pad_fixed" type="fixed">
     <parent link="right_finger3_link4" />
-    <child link="right_finger3_pad_frame" />
-    <origin xyz="-0.000650000001009 0.00541135856617 0.0201039253082" rpy="3.14159265019 -1.55634981875 1.5707963302" />
+    <child link="right_finger3_pad" />
+    <origin xyz="-0.000646578946653 -0.00638898613424 0.0207611224125" rpy="0 0 0" />
   </joint>
-  <link name="right_finger4_pad_frame" />
-  <joint name="right_finger4_pad_frame_fixed" type="fixed">
+  <link name="right_thumb_pad" />
+  <joint name="right_thumb_pad_fixed" type="fixed">
+    <parent link="right_thumb_link4" />
+    <child link="right_thumb_pad" />
+    <origin xyz="-3.66216494593e-05 -0.028500341515 0.0127727528254" rpy="0 0 0" />
+  </joint>
+  <link name="right_finger4_pad" />
+  <joint name="right_finger4_pad_fixed" type="fixed">
     <parent link="right_finger4_link4" />
-    <child link="right_finger4_pad_frame" />
-    <origin xyz="0.000527520904337 0.00552645560218 0.0306411188614" rpy="0.127174305269 -1.52430090344 -1.67999008312" />
+    <child link="right_finger4_pad" />
+    <origin xyz="0.000717825545034 -0.00652127833713 0.030480346822" rpy="0 0 0" />
   </joint>
   <link name="right_retarget_wrist" />
   <joint name="right_retarget_wrist_fixed" type="fixed">

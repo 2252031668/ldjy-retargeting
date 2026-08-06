@@ -16,12 +16,13 @@ try:
 except ModuleNotFoundError:
     from ldjy_asset_frames import RIGHT_MANO_FROM_CAD, root_palm_translation
 from ldjy_retargeting.retarget_tip_frames import (
+    FINGERS,
     apply_offset,
     load_tip_offsets,
     normalize_tip_offsets,
     task_frame_axes,
 )
-from ldjy_retargeting.retarget_pad_frames import RobotPadFrame, pad_frames_from_source
+from ldjy_retargeting.pad_calibration import load_pad_points
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -130,21 +131,14 @@ def add_tip_frames(root: ET.Element, tip_positions: dict[str, np.ndarray]) -> No
         ET.SubElement(joint, "origin", {"xyz": numbers(position), "rpy": "0 0 0"})
 
 
-def add_pad_frames(root: ET.Element, pad_frames: Mapping[str, RobotPadFrame]) -> None:
-    """Add CAD-derived, massless pad frames below the five distal links."""
-    for finger, frame in pad_frames.items():
-        ET.SubElement(root, "link", {"name": f"{finger}_pad_frame"})
-        joint = ET.SubElement(
-            root,
-            "joint",
-            {"name": f"{finger}_pad_frame_fixed", "type": "fixed"},
-        )
+def add_pad_frames(root: ET.Element, pad_positions: Mapping[str, np.ndarray]) -> None:
+    """Attach calibrated pad points as fixed children of the distal links."""
+    for finger in FINGERS:
+        ET.SubElement(root, "link", {"name": f"{finger}_pad"})
+        joint = ET.SubElement(root, "joint", {"name": f"{finger}_pad_fixed", "type": "fixed"})
         ET.SubElement(joint, "parent", {"link": f"{finger}_link4"})
-        ET.SubElement(joint, "child", {"link": f"{finger}_pad_frame"})
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message="Gimbal lock detected")
-            rpy = Rotation.from_matrix(frame.rotation_parent_from_pad).as_euler("xyz")
-        ET.SubElement(joint, "origin", {"xyz": numbers(frame.position_m), "rpy": numbers(rpy)})
+        ET.SubElement(joint, "child", {"link": f"{finger}_pad"})
+        ET.SubElement(joint, "origin", {"xyz": numbers(pad_positions[finger]), "rpy": "0 0 0"})
 
 
 def add_mano_root(root: ET.Element, side: str) -> None:
@@ -183,6 +177,7 @@ def build_urdf(
     side: str,
     *,
     offsets: Mapping[str, Mapping[str, float]] | None = None,
+    pad_points: Mapping[str, np.ndarray] | None = None,
     output_dir: Path = OUTPUT_DIR,
 ) -> Path:
     if side not in ("right", "left"):
@@ -190,7 +185,9 @@ def build_urdf(
     source_model = mujoco.MjModel.from_xml_path(str(SOURCE_URDF))
     root = ET.parse(SOURCE_URDF).getroot()
     add_tip_frames(root, distal_tip_positions(source_model, offsets))
-    add_pad_frames(root, pad_frames_from_source(source_model))
+    calibrated_points = load_pad_points() if pad_points is None else pad_points
+    if calibrated_points is not None:
+        add_pad_frames(root, calibrated_points)
     if side == "left":
         mirror_cad_tree(root)
     add_mano_root(root, side)

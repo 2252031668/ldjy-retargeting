@@ -1,0 +1,147 @@
+mano:
+  betas:
+  - -0.36796611230045867
+  - 0.1820478872901963
+  - -0.4868301124595033
+  - 2.4585491171063762
+  - 1.0889663325212018
+  - -1.7275288746568458
+  - -1.6931188736679623
+  - -0.22653931071818778
+  - 1.0305042572109622
+  - -1.5567536698095952
+  hand_pose:
+  - - -0.07020066663750392
+    - 0.17534999774399876
+    - 0.1621987102906936
+  - - -0.019179190114741652
+    - 0.04717706871414491
+    - -5.224485956557488e-05
+  - - -0.0006796297773891395
+    - 0.010791304408226161
+    - -0.06722585656451144
+  - - -0.11289733841309124
+    - 0.11398747330362957
+    - 0.1710896164564889
+  - - -5.903798698581462e-18
+    - 0.011405510465405964
+    - 0.03541392716267695
+  - - -6.287182740278779e-18
+    - 0.003128605282611113
+    - 0.04814087676561143
+  - - -6.198855566707164e-16
+    - -2.73171801052047e-16
+    - -3.5132009779450474e-16
+  - - -0.003614455584407674
+    - -0.027490833840894447
+    - 0.08391738179530141
+  - - -0.004817934699382749
+    - -0.010683100139575599
+    - 0.0601440990756526
+  - - -0.03334216723270591
+    - -0.00975115167172522
+    - 0.14717157616009485
+  - - -0.010920129340317632
+    - 0.06459992355711174
+    - 0.01228907454587436
+  - - -0.0047210968791492275
+    - 0.0030880665136546366
+    - 0.05856768956812751
+  - - -0.03938763114966171
+    - -0.09259965272521467
+    - -0.27587068322140346
+  - - 0.07415094216471659
+    - 0.0817951071984233
+    - 1.0249505406670492e-19
+  - - 0.03158181351824465
+    - 0.005858366351074531
+    - -0.010648845094730972
+  global_orient:
+  - 0.0
+  - 0.0
+  - 0.0
+  translation:
+  - 0.0
+  - 0.0
+  - 0.0
+  scale: 1.0
+mano_to_ldjy_registration:
+  rotation_axis_angle:
+  - -1.248480130111793
+  - 1.23660967761789
+  - 1.049369772277953
+  translation:
+  - -0.002649352445025098
+  - -0.009157093821231482
+  - 0.11596394126876818
+  scale: 1.1324193462919925
+fit_settings:
+  use_positions: true
+  position_weight: 0.4
+  position_mask:
+  - true
+  - true
+  - true
+  - true
+  - true
+  use_normals: true
+  normal_weight: 0.2
+  normal_mask:
+  - true
+  - true
+  - true
+  - true
+  - true
+  use_directions: true
+  direction_weight: 1.8
+  direction_mask:
+  - true
+  - true
+  - true
+  - true
+  - true
+  use_palm_normal: true
+  palm_normal_weight: 3.5
+  use_direction_lines: false
+  direction_line_mask:
+  - true
+  - true
+  - true
+  - true
+  - true
+  use_straight_fingers: true
+  straight_fingers_weight: 0.2
+  straight_fingers_exact: false
+  use_palm_plane: false
+  palm_plane_weight: 0.5
+  palm_plane_exact: false
+  use_hand_pose_prior: true
+  hand_pose_prior_weight: 0.1
+  hand_pose_prior_reference: zero
+  fit_hand_joints:
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  straight_finger_mask:
+  - true
+  - true
+  - true
+  - true
+  - true
+  fit_betas: true
+  fit_rotation: true
+  fit_translation: true
+  fit_scale: true
+  beta_bound: 3.0
