@@ -10,12 +10,16 @@ sys.path.insert(0, str(EXAMPLE_DIR))
 
 
 class TuningGuiCliTests(unittest.TestCase):
-    def test_only_adaptive_algorithms_are_exposed(self):
+    def test_supported_algorithms_are_exposed(self):
         from tuning_gui import algorithm_choices
 
         choices = {choice.key: choice for choice in algorithm_choices()}
 
-        self.assertEqual(set(choices), {"adaptive_mediapipe", "adaptive_wilor"})
+        self.assertEqual(
+            set(choices),
+            {"adaptive_mediapipe", "adaptive_wilor", "mano_pad_pose_wilor"},
+        )
+        self.assertEqual(choices["mano_pad_pose_wilor"].input_types, ("webcam_wilor",))
 
     def test_only_wilor_input_exposes_the_mano_overlay_toggle(self):
         from tuning_gui import supports_mano_overlay
@@ -60,6 +64,22 @@ class TuningGuiCliTests(unittest.TestCase):
         self.assertTrue(worker.paused)
         worker.set_paused(False)
         self.assertFalse(worker.paused)
+
+    def test_debug_pose_writes_actuator_targets_without_servo_lag(self):
+        import mujoco
+        from tuning_gui import apply_debug_kinematic_pose
+
+        model = mujoco.MjModel.from_xml_string("""
+            <mujoco><worldbody><body><joint name='a' type='hinge'/><geom type='sphere' size='.01'/><body><joint name='b' type='hinge'/><geom type='sphere' size='.01'/></body></body></worldbody>
+            <actuator><position joint='a'/><position joint='b'/></actuator></mujoco>
+        """)
+        data = mujoco.MjData(model)
+        data.qvel[:] = 1.0
+
+        apply_debug_kinematic_pose(model, data, [0.3, -0.2])
+
+        self.assertEqual(data.qpos.tolist(), [0.3, -0.2])
+        self.assertEqual(data.qvel.tolist(), [0.0, 0.0])
 
     def test_help_does_not_open_a_camera_or_import_pyside(self):
         result = subprocess.run(

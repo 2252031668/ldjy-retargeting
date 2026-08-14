@@ -28,8 +28,9 @@ uv run --no-sync python example/tuning_gui.py
 `--webcam`、`--webcam-wilor`、`--camera-index` 和 `--hand` 仅保留为初始选择兼容参数，不再是日常启动所需。
 例如旧脚本可继续使用 `python example/tuning_gui.py --webcam --camera-index 0 --hand right`，但推荐直接启动 GUI。
 
-GUI 相机预览按检测帧更新；独立 MuJoCo debug 窗口按 120 Hz 刷新，并以 2 ms 子步保持
-500 Hz 平均物理积分，因此手模型的物理时间与现实时间保持同步。
+GUI 相机预览按检测帧更新；独立 MuJoCo debug 窗口按 120 Hz 刷新，直接显示当前重定向
+命令的运动学姿态，用于核对 Pinocchio IK 与 MuJoCo 指腹 site 是否一致。它不模拟 actuator
+跟踪误差或物理时间。
 
 不接相机时，可以使用仓库自带的 21 点回放数据验证完整链路：
 
@@ -54,6 +55,7 @@ WiLoR 输入已是米制 MANO 关键点，不经过 MediaPipe 的 `z_scale`、0.
 ## 功能
 
 - AdaptiveOptimizerAnalytical：默认算法。在整手姿态和捏合指尖目标间连续切换。
+- ManoPadPoseOptimizer：WiLoR 专用的指腹捏合模式。固定 `beta_robot`，用机器人尺度 MANO 的五个指腹位置和表面法线驱动 LDJY 20-DOF IK；捏合时联立求解拇指和参与手指。
 - 输入：pkl 回放、Vision Pro、视频、USB 摄像头、RealSense、ZED。
 - 实时调参：PySide6 参数面板、MediaPipe 相机预览和 MuJoCo debug 叠加。
 - 虚拟末端调节：每根手指可沿末节纵向与指甲-指肚厚度方向调整 task tip，并同步到优化器和仿真。
@@ -123,6 +125,7 @@ docs/                             中文开发者文档与设计/实施记录
 ```text
 WebcamMediaPipe -> MediaPipe (21, 3) -> Retargeter -> LDJY qpos (20) -> MuJoCo
 WebcamWiLoR -> WiLoR MANO joints (21, 3) -> Retargeter -> LDJY qpos (20) -> MuJoCo
+WebcamWiLoR -> WiLoR hand_pose + beta_robot -> MANO 指腹位置/法线 + 末节表面距离 -> Pad IK -> LDJY qpos (20)
 ```
 
 程序会打开两个窗口：
@@ -183,6 +186,17 @@ WiLoR 实时输入使用 `Adaptive Analytical (WiLoR 21 点)`。它不会读取�
 uv sync --extra gui --extra tuning --extra wilor
 uv run --no-sync python example/tuning_gui.py
 ```
+
+选择 `MANO 指腹捏合 IK (WiLoR)` 可启用第一版指腹模式。它直接使用 WiLoR 的绝对局部
+`hand_pose`，但始终使用 `mano_ldjy_reference.yaml` 中固定的机器人 `betas`；不减去
+`hand_pose_ref`，也不使用 WiLoR 的 `global_orient` 和 `translation` 移动机器人 wrist。
+每根手指的位置、法线、权重、平滑项和是否参与求解都可独立调整；左手在 GUI 和静态回放中均受支持。
+
+捏合距离不再量固定的两个指腹中心点。程序在启动时根据 MANO 的蒙皮权重，为拇指和四根
+手指各自固定最后一个活动关节到 tip 的完整末节三角面集合；每帧以 WiLoR MANO 网格计算
+拇指末节与其余末节的面-面最短距离。该距离按人手到 `beta_robot` 的尺度比例和静态 registration
+scale 换算后，用于进入捏合、两指目标间距和接触面优化；指尖、侧面或指甲面接近都可触发。
+张手时仍是五根手指独立的 4-DOF 求解；进入捏合的拇指-手指链则会联合优化。
 
 GUI 的“末端任务点”分区提供五根手指各两个偏移：纵向沿 `PIP -> DIP`，厚度沿指甲盖到指肚。
 调节时会在 `.cache/tip_tuning/` 生成临时 URDF/MJCF，优化器和 MuJoCo debug 使用同一份缓存资产，

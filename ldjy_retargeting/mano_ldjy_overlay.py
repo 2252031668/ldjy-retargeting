@@ -26,6 +26,19 @@ def apply_registration(
     return float(scale) * np.asarray(points) @ Rotation.from_rotvec(rotation).as_matrix().T + translation
 
 
+def mirror_registration_for_left(
+    rotation: np.ndarray, translation: np.ndarray, scale: float
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Mirror a right-hand MANO-to-LDJY registration into the left-hand frame."""
+    mirror = np.diag((1.0, -1.0, 1.0))
+    mirrored_rotation = mirror @ Rotation.from_rotvec(rotation).as_matrix() @ mirror
+    return (
+        Rotation.from_matrix(mirrored_rotation).as_rotvec(),
+        np.asarray(translation, dtype=float) @ mirror,
+        float(scale),
+    )
+
+
 def average_surface_normal(
     vertices: np.ndarray,
     faces: np.ndarray,

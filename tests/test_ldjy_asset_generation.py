@@ -23,16 +23,31 @@ class LDJYFrameContractTests(unittest.TestCase):
         )
         self.assertAlmostEqual(float(np.linalg.det(RIGHT_MANO_FROM_CAD)), 1.0)
 
-    def test_cad_wrist_maps_to_the_mano_origin(self):
+    def test_calibrated_root_translation_places_the_mano_wrist_point_at_the_origin(self):
         from ldjy_asset_frames import (
-            RIGHT_MANO_FROM_CAD,
-            WRIST_IN_CAD,
+            DEFAULT_ROOT_PALM_TRANSLATION,
+            RETARGET_WRIST_POINT_IN_ORIGINAL_ROOT,
             root_palm_translation,
         )
 
         np.testing.assert_allclose(
-            RIGHT_MANO_FROM_CAD @ WRIST_IN_CAD + root_palm_translation("right"),
-            np.zeros(3),
+            root_palm_translation("right") + RETARGET_WRIST_POINT_IN_ORIGINAL_ROOT["right"],
+            DEFAULT_ROOT_PALM_TRANSLATION,
+            atol=1e-12,
+        )
+        mano_left_from_right = np.diag((1.0, -1.0, 1.0))
+        mirrored_point = RETARGET_WRIST_POINT_IN_ORIGINAL_ROOT["right"] @ mano_left_from_right
+        np.testing.assert_allclose(
+            root_palm_translation("left") + RETARGET_WRIST_POINT_IN_ORIGINAL_ROOT["left"],
+            DEFAULT_ROOT_PALM_TRANSLATION,
+            atol=1e-12,
+        )
+        np.testing.assert_allclose(
+            RETARGET_WRIST_POINT_IN_ORIGINAL_ROOT["left"], mirrored_point, atol=1e-12
+        )
+        np.testing.assert_allclose(
+            root_palm_translation("left"),
+            root_palm_translation("right") @ mano_left_from_right,
             atol=1e-12,
         )
 
@@ -247,6 +262,11 @@ class LDJYGeneratedMJCFTests(unittest.TestCase):
                     )
                     np.testing.assert_allclose(
                         mjcf_data.site_xpos[site_id], pad_pose.translation, atol=1e-6
+                    )
+                    np.testing.assert_allclose(
+                        mjcf_data.site_xmat[site_id].reshape(3, 3)[:, 2],
+                        pad_pose.rotation[:, 2],
+                        atol=1e-6,
                     )
                     local_position = pad_points[finger].copy()
                     if side == "left":

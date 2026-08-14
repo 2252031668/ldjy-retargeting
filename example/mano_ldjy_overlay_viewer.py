@@ -10,6 +10,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -47,6 +48,7 @@ from ldjy_retargeting.mano_ldjy_overlay import (
     average_surface_normal,
     apply_registration,
     fit_static_registration,
+    mirror_registration_for_left,
     solve_exact_hand_pose_constraints,
 )
 
@@ -63,8 +65,7 @@ from mano_viewer import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LDJY_MJCF = ROOT / "ldjy_retargeting" / "assets" / "robots" / "ldjy_hand" / "mjcf" / "ldjy_right_hand.xml"
-REFERENCE_PATH = ROOT / "ldjy_retargeting" / "assets" / "robots" / "ldjy_hand" / "mano_ldjy_reference.yaml"
+LDJY_ASSET_DIR = ROOT / "ldjy_retargeting" / "assets" / "robots" / "ldjy_hand"
 LDJY_FINGERS = ("thumb", "finger1", "finger2", "finger3", "finger4")
 FINGER_LABELS = ("Thumb", "Index", "Middle", "Ring", "Pinky")
 LDJY_DIRECTION_JOINTS = (
@@ -79,6 +80,8 @@ LDJY_PALM_NORMAL_JOINTS = (("thumb", 2), ("finger1", 2), ("finger3", 2))
 MANO_PALM_NORMAL_KEYPOINTS = (0, 5, 17)
 PALM_NORMAL_LENGTH = 0.04
 IDENTITY_MAT = np.eye(3).ravel()
+# LDJY is mirrored across CAD X, which becomes MANO Y after RIGHT_MANO_FROM_CAD.
+MANO_LEFT_FROM_RIGHT = np.diag((1.0, -1.0, 1.0))
 FIT_DEFAULTS = {
     "use_positions": True,
     "position_weight": 1.0,
@@ -110,6 +113,22 @@ FIT_DEFAULTS = {
     "fit_translation": True,
     "fit_scale": True,
 }
+
+
+def _ldjy_mjcf_path(side: str) -> Path:
+    return LDJY_ASSET_DIR / "mjcf" / f"ldjy_{side}_hand.xml"
+
+
+def _reference_path(side: str) -> Path:
+    name = "mano_ldjy_reference.yaml" if side == "right" else f"mano_ldjy_{side}_reference.yaml"
+    return LDJY_ASSET_DIR / name
+
+
+def parse_args(args=None):
+    parser = argparse.ArgumentParser(description="Inspect a MANO hand over an LDJY hand.")
+    parser.add_argument("--left", action="store_const", dest="side", const="left", default="right",
+                        help="inspect the left LDJY hand and its separate reference file")
+    return parser.parse_args(args)
 
 
 def _add_sphere(scene, position, label, rgba, radius):
@@ -377,21 +396,25 @@ class FitSettingsDialog(QDialog):
 
 
 class OverlayWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, side: str = "right"):
         super().__init__()
-        self.setWindowTitle("MANO / LDJY Registration Debug")
+        self.side = side
+        self.ldjy_mjcf = _ldjy_mjcf_path(side)
+        self.reference_path = _reference_path(side)
+        self.setWindowTitle(f"MANO / LDJY Registration Debug ({side})")
         self.setMinimumWidth(440)
         if not MANO_MODEL_PATH.exists():
             raise FileNotFoundError(f"MANO model not found: {MANO_MODEL_PATH}")
-        if not LDJY_MJCF.exists():
-            raise FileNotFoundError(f"LDJY MJCF not found: {LDJY_MJCF}")
+        if not self.ldjy_mjcf.exists():
+            raise FileNotFoundError(f"LDJY MJCF not found: {self.ldjy_mjcf}")
 
         self.mano = MANOModel(str(MANO_MODEL_PATH))
-        self._expanded_to_orig = self.mano.faces.reshape(-1).astype(np.int64)
+        mesh_faces = self.mano.faces if side == "right" else self.mano.faces[:, (0, 2, 1)]
+        self._expanded_to_orig = mesh_faces.reshape(-1).astype(np.int64)
         self._expanded_faces = np.arange(len(self._expanded_to_orig), dtype=np.int32).reshape(-1, 3)
         self.scene = OverlayScene(
-            LDJY_MJCF,
-            self.mano.default_vertices[self._expanded_to_orig],
+            self.ldjy_mjcf,
+            self._mirror_mano_points(self.mano.default_vertices)[self._expanded_to_orig],
             self._expanded_faces,
         )
         self.scene.set_ldjy_alpha(0.35)
@@ -601,12 +624,14 @@ class OverlayWindow(QMainWindow):
             vertices, joints, pads = self.mano.compute(betas, hand_pose, zero_vector, zero_vector, 1.0)
             cached_betas = np.asarray(betas).copy()
             cached_hand_pose = np.asarray(hand_pose).copy()
+            cached_normals = self._mirror_mano_vectors(self._mano_pad_normals(vertices))
+            joints = self._mirror_mano_points(joints)
+            pads = self._mirror_mano_points(pads)
             cached_directions = self._mano_finger_directions(joints)
             cached_direction_starts = self._mano_finger_direction_starts(joints)
             cached_palm_normal = self._mano_palm_normal(joints)
             cached_joints = joints
             cached_pads = pads
-            cached_normals = self._mano_pad_normals(vertices)
             return cached_pads, cached_normals
 
         def sample_directions(betas, hand_pose):
@@ -752,13 +777,17 @@ class OverlayWindow(QMainWindow):
             },
             "fit_settings": self.fit_settings,
         }
-        REFERENCE_PATH.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
-        self.status.setText(f"Saved reference: {REFERENCE_PATH}")
+        self.reference_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+        self.status.setText(f"Saved reference: {self.reference_path}")
 
     def _load_reference(self):
-        if not REFERENCE_PATH.exists():
+        source_path = self.reference_path
+        mirrored_from_right = self.side == "left" and not source_path.exists()
+        if mirrored_from_right:
+            source_path = _reference_path("right")
+        if not source_path.exists():
             return
-        payload = yaml.safe_load(REFERENCE_PATH.read_text(encoding="utf-8")) or {}
+        payload = yaml.safe_load(source_path.read_text(encoding="utf-8")) or {}
         mano = payload.get("mano", {})
         for slider, value in zip(self.beta_sliders, mano.get("betas", [])):
             slider.set_value(value)
@@ -776,23 +805,33 @@ class OverlayWindow(QMainWindow):
             self.mano_scale.set_value(mano["scale"])
 
         registration = payload.get("mano_to_ldjy_registration", {})
-        for slider, value in zip(self.registration_rotation, registration.get("rotation_axis_angle", [])):
+        rotation = np.asarray(registration.get("rotation_axis_angle", np.zeros(3)), dtype=float)
+        translation = np.asarray(registration.get("translation", np.zeros(3)), dtype=float)
+        scale = float(registration.get("scale", 1.0))
+        if mirrored_from_right:
+            rotation, translation, scale = mirror_registration_for_left(rotation, translation, scale)
+        for slider, value in zip(self.registration_rotation, rotation):
             slider.set_value(value)
-        for slider, value in zip(self.registration_translation, registration.get("translation", [])):
+        for slider, value in zip(self.registration_translation, translation):
             slider.set_value(value)
-        if "scale" in registration:
-            self.registration_scale.set_value(registration["scale"])
+        self.registration_scale.set_value(scale)
         self.fit_settings.update(payload.get("fit_settings", {}))
+
+    def _mirror_mano_points(self, points):
+        return np.asarray(points) @ (MANO_LEFT_FROM_RIGHT if self.side == "left" else np.eye(3))
+
+    def _mirror_mano_vectors(self, vectors):
+        return self._mirror_mano_points(vectors)
 
     def _ldjy_pad_samples(self):
         points = []
         normals = []
         for finger in LDJY_FINGERS:
             site_id = mujoco.mj_name2id(
-                self.scene.model, mujoco.mjtObj.mjOBJ_SITE, f"right_{finger}_pad_center"
+                self.scene.model, mujoco.mjtObj.mjOBJ_SITE, f"{self.side}_{finger}_pad_center"
             )
             if site_id < 0:
-                raise ValueError(f"LDJY model is missing right_{finger}_pad_center")
+                raise ValueError(f"LDJY model is missing {self.side}_{finger}_pad_center")
             points.append(self.scene.data.site_xpos[site_id].copy())
             normals.append(self.scene.data.site_xmat[site_id].reshape(3, 3)[:, 2].copy())
         return np.asarray(points), np.asarray(normals)
@@ -820,10 +859,10 @@ class OverlayWindow(QMainWindow):
         directions = []
         for finger, start_number, end_number in LDJY_DIRECTION_JOINTS:
             start_id = mujoco.mj_name2id(
-                self.scene.model, mujoco.mjtObj.mjOBJ_JOINT, f"right_{finger}_joint{start_number}"
+                self.scene.model, mujoco.mjtObj.mjOBJ_JOINT, f"{self.side}_{finger}_joint{start_number}"
             )
             end_id = mujoco.mj_name2id(
-                self.scene.model, mujoco.mjtObj.mjOBJ_JOINT, f"right_{finger}_joint{end_number}"
+                self.scene.model, mujoco.mjtObj.mjOBJ_JOINT, f"{self.side}_{finger}_joint{end_number}"
             )
             start = self.scene.data.xanchor[start_id].copy()
             starts.append(start)
@@ -838,10 +877,10 @@ class OverlayWindow(QMainWindow):
         points = []
         for finger, number in LDJY_PALM_NORMAL_JOINTS:
             joint_id = mujoco.mj_name2id(
-                self.scene.model, mujoco.mjtObj.mjOBJ_JOINT, f"right_{finger}_joint{number}"
+                self.scene.model, mujoco.mjtObj.mjOBJ_JOINT, f"{self.side}_{finger}_joint{number}"
             )
             if joint_id < 0:
-                raise ValueError(f"LDJY model is missing right_{finger}_joint{number}")
+                raise ValueError(f"LDJY model is missing {self.side}_{finger}_joint{number}")
             points.append(self.scene.data.xanchor[joint_id].copy())
         return np.asarray(points)
 
@@ -849,21 +888,27 @@ class OverlayWindow(QMainWindow):
         return _plane_normal(*self._ldjy_palm_points())
 
     def _draw_ldjy_skeleton(self, visual):
-        palm_id = mujoco.mj_name2id(self.scene.model, mujoco.mjtObj.mjOBJ_BODY, "right_palm")
+        wrist_id = mujoco.mj_name2id(
+            self.scene.model, mujoco.mjtObj.mjOBJ_BODY, f"{self.side}_retarget_wrist"
+        )
+        palm_id = mujoco.mj_name2id(self.scene.model, mujoco.mjtObj.mjOBJ_BODY, f"{self.side}_palm")
+        wrist = self.scene.data.xpos[wrist_id]
         palm = self.scene.data.xpos[palm_id]
+        _add_sphere(visual, wrist, "LDJY retarget wrist", (1.0, 0.8, 0.1, 1.0), 0.0028)
+        _add_line(visual, wrist, palm, "LDJY wrist to palm", (1.0, 0.8, 0.1, 0.8), 0.00045)
         _add_sphere(visual, palm, "LDJY palm", (0.1, 0.9, 0.85, 1.0), 0.0025)
         for finger in LDJY_FINGERS:
             previous = palm
             for number in range(1, 5):
                 joint_id = mujoco.mj_name2id(
-                    self.scene.model, mujoco.mjtObj.mjOBJ_JOINT, f"right_{finger}_joint{number}"
+                    self.scene.model, mujoco.mjtObj.mjOBJ_JOINT, f"{self.side}_{finger}_joint{number}"
                 )
                 point = self.scene.data.xanchor[joint_id]
                 _add_line(visual, previous, point, f"{finger} link", (0.1, 0.85, 0.85, 0.9), 0.00055)
                 _add_sphere(visual, point, f"{finger} J{number}", (0.1, 0.9, 0.85, 1.0), 0.0018)
                 previous = point
             site_id = mujoco.mj_name2id(
-                self.scene.model, mujoco.mjtObj.mjOBJ_SITE, f"right_{finger}_link4_tip"
+                self.scene.model, mujoco.mjtObj.mjOBJ_SITE, f"{self.side}_{finger}_link4_tip"
             )
             _add_line(visual, previous, self.scene.data.site_xpos[site_id], f"{finger} distal", (0.1, 0.85, 0.85, 0.9), 0.00055)
 
@@ -875,14 +920,14 @@ class OverlayWindow(QMainWindow):
         if self.show_ldjy_tips.isChecked():
             for finger in LDJY_FINGERS:
                 site_id = mujoco.mj_name2id(
-                    self.scene.model, mujoco.mjtObj.mjOBJ_SITE, f"right_{finger}_link4_tip"
+                    self.scene.model, mujoco.mjtObj.mjOBJ_SITE, f"{self.side}_{finger}_link4_tip"
                 )
                 if site_id >= 0:
                     _add_sphere(visual, self.scene.data.site_xpos[site_id], f"{finger} tip", (0.1, 0.7, 1.0, 1.0), 0.002)
         if self.show_ldjy_pads.isChecked() or self.show_ldjy_normals.isChecked():
             for finger in LDJY_FINGERS:
                 site_id = mujoco.mj_name2id(
-                    self.scene.model, mujoco.mjtObj.mjOBJ_SITE, f"right_{finger}_pad_center"
+                    self.scene.model, mujoco.mjtObj.mjOBJ_SITE, f"{self.side}_{finger}_pad_center"
                 )
                 if site_id < 0:
                     continue
@@ -903,7 +948,9 @@ class OverlayWindow(QMainWindow):
             )
 
         rotation_matrix = Rotation.from_rotvec(rotation).as_matrix()
-        registered_joints = apply_registration(mano_joints, rotation, translation, scale)
+        mirrored_joints = self._mirror_mano_points(mano_joints)
+        mirrored_pads = self._mirror_mano_points(mano_pads)
+        registered_joints = apply_registration(mirrored_joints, rotation, translation, scale)
         if self.show_mano_keypoints.isChecked():
             for index, point in enumerate(registered_joints):
                 _add_sphere(visual, point, f"MANO joint {index}", (0.35, 1.0, 0.3, 1.0), 0.0017)
@@ -929,9 +976,9 @@ class OverlayWindow(QMainWindow):
                 visual, center, center + normal * PALM_NORMAL_LENGTH, "MANO palm normal",
                 (1.0, 0.25, 0.8, 1.0), 0.0008,
             )
-        registered_normals = self._mano_pad_normals(mano_vertices) @ rotation_matrix.T
+        registered_normals = self._mirror_mano_vectors(self._mano_pad_normals(mano_vertices)) @ rotation_matrix.T
         for index, finger in enumerate(TIP_ORDER):
-            point = apply_registration(mano_pads[index:index + 1], rotation, translation, scale)[0]
+            point = apply_registration(mirrored_pads[index:index + 1], rotation, translation, scale)[0]
             normal = registered_normals[index]
             _add_sphere(visual, point, f"MANO {finger} pad", (1.0, 0.5, 0.0, 1.0), 0.002)
             _add_line(visual, point, point + normal * 0.01, f"MANO {finger} normal", (0.95, 0.95, 0.35, 1.0))
@@ -949,7 +996,7 @@ class OverlayWindow(QMainWindow):
         )))
         if state != self._last_mano_state:
             vertices, joints, pads = self.mano.compute(*parameters)
-            registered = apply_registration(vertices, rotation, translation, scale)
+            registered = apply_registration(self._mirror_mano_points(vertices), rotation, translation, scale)
             self.scene.update_mano_mesh(registered[self._expanded_to_orig])
             self.viewer.update_mesh(self.scene.mesh_id)
             self._last_mano_state = state
@@ -969,9 +1016,10 @@ class OverlayWindow(QMainWindow):
 
 
 def main():
+    args = parse_args()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
-    window = OverlayWindow()
+    window = OverlayWindow(args.side)
     window.show()
     sys.exit(app.exec())
 

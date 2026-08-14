@@ -21,6 +21,7 @@ ACTUAL_JOINT_RGBA = np.array((1.0, 0.85, 0.1, 1.0))
 ACTUAL_LINK_RGBA = np.array((0.1, 0.85, 0.9, 0.95))
 TARGET_RGBA = np.array((0.25, 1.0, 0.25, 0.95))
 PINCH_TARGET_RGBA = np.array((1.0, 0.2, 0.2, 0.95))
+ACTUAL_PAD_RGBA = np.array((0.1, 0.8, 1.0, 0.95))
 PINCH_VISUAL_ALPHA = 0.05
 TIP_DIR_DISPLAY_LENGTH = 0.015
 IDENTITY_MAT = np.eye(3).ravel()
@@ -169,6 +170,60 @@ def _active_target_segments(optimizer, mediapipe_keypoints, pinch_alphas):
     return segments
 
 
+def _draw_pad_targets(scene, model, actual_data, hand_side, diagnostics) -> None:
+    targets = diagnostics.get("pad_targets_m")
+    normals = diagnostics.get("pad_target_normals")
+    if targets is None:
+        return
+    targets = np.asarray(targets, dtype=np.float64)
+    normals = None if normals is None else np.asarray(normals, dtype=np.float64)
+    command_positions = diagnostics.get("pad_actual_m")
+    command_normals = diagnostics.get("pad_actual_normals")
+    if command_positions is not None:
+        command_positions = np.asarray(command_positions, dtype=np.float64)
+    if command_normals is not None:
+        command_normals = np.asarray(command_normals, dtype=np.float64)
+    for index, target in enumerate(targets):
+        # Pad diagnostics are already expressed in the LDJY root/world frame.
+        world_target = target
+        _add_sphere(scene, world_target, f"MANO pad target {index + 1}", TARGET_RGBA, 0.0022)
+        if normals is not None and normals.shape == targets.shape:
+            world_normal = normals[index]
+            _add_link(
+                scene,
+                world_target,
+                world_target + world_normal * 0.025,
+                f"MANO pad normal {index + 1}",
+                TARGET_RGBA,
+                width=0.00055,
+            )
+        if command_positions is not None and command_positions.shape == targets.shape:
+            command = command_positions[index]
+            _add_sphere(scene, command, f"LDJY command pad {index + 1}", PINCH_TARGET_RGBA, 0.0018)
+            if command_normals is not None and command_normals.shape == targets.shape:
+                _add_link(
+                    scene,
+                    command,
+                    command + command_normals[index] * 0.02,
+                    f"LDJY command pad normal {index + 1}",
+                    PINCH_TARGET_RGBA,
+                    width=0.00045,
+                )
+    for index, (finger, _) in enumerate(FINGERS):
+        site_id = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_SITE, f"{hand_side}_{finger}_pad_center"
+        )
+        if site_id < 0:
+            continue
+        world_point = actual_data.site_xpos[site_id]
+        world_normal = actual_data.site_xmat[site_id].reshape(3, 3)[:, 2]
+        _add_sphere(scene, world_point, f"MuJoCo actual pad {index + 1}", ACTUAL_PAD_RGBA, 0.0018)
+        _add_link(
+            scene, world_point, world_point + world_normal * 0.02,
+            f"MuJoCo actual pad normal {index + 1}", ACTUAL_PAD_RGBA, width=0.00045,
+        )
+
+
 class DebugOverlay:
     """Draw physical pose and active adaptive target vectors."""
 
@@ -194,6 +249,7 @@ class DebugOverlay:
         optimizer,
         mediapipe_keypoints,
         pinch_alphas,
+        diagnostics=None,
     ) -> None:
         scene.ngeom = 0
         if self.show_skeleton:
@@ -209,6 +265,8 @@ class DebugOverlay:
         )
         wrist_pos = actual_data.xpos[wrist_id].copy()
         wrist_rot = actual_data.xmat[wrist_id].reshape(3, 3).copy()
+        if diagnostics is not None:
+            _draw_pad_targets(scene, self.model, actual_data, self.hand_side, diagnostics)
         for segment in _active_target_segments(
             optimizer, mediapipe_keypoints, pinch_alphas
         ):

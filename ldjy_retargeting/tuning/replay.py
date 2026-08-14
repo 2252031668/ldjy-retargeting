@@ -143,6 +143,18 @@ class WiLoRReplay(_RecordReplay):
         valid = np.flatnonzero(self.record.detected[: index + 1])
         return None if not len(valid) else self.record.arrays["joints_mano"][valid[-1]].copy()
 
+    def mano_parameters_at(self, index: int) -> dict[str, np.ndarray] | None:
+        """Return the selected WiLoR MANO parameters for a replay frame."""
+        index = int(np.clip(index, 0, self.record.frame_count - 1))
+        valid = np.flatnonzero(self.record.detected[: index + 1])
+        if not len(valid):
+            return None
+        item = valid[-1]
+        return {
+            name: self.record.arrays[name][item].copy()
+            for name in ("hand_pose", "global_orient", "betas")
+        } | {"translation": np.zeros(3, dtype=np.float64)}
+
     def preview_at(self, index: int) -> np.ndarray | None:
         return self.frame_at(index)
 

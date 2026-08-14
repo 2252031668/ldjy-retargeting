@@ -35,6 +35,13 @@ class LDJYViewerTests(unittest.TestCase):
         expected = np.clip(0.0, model.actuator_ctrlrange[:, 0], model.actuator_ctrlrange[:, 1])
         np.testing.assert_allclose(data.ctrl, expected)
 
+    def test_position_actuators_have_enough_gain_for_debug_tracking(self):
+        viewer = load_viewer()
+        model = mujoco.MjModel.from_xml_path(str(viewer.mjcf_path("right")))
+
+        np.testing.assert_allclose(model.actuator_gainprm[:, 0], 3.0)
+        np.testing.assert_allclose(model.actuator_biasprm[:, 2], -0.4)
+
     def test_draws_five_calibrated_pad_markers_from_mjcf_sites(self):
         viewer = load_viewer()
         sites = "".join(

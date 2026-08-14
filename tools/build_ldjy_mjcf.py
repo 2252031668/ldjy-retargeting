@@ -21,7 +21,7 @@ from ldjy_retargeting.retarget_tip_frames import (
     normalize_tip_offsets,
     task_frame_axes,
 )
-from ldjy_retargeting.pad_calibration import link4_visual_surface, load_pad_points
+from ldjy_retargeting.pad_calibration import load_pad_points, pad_surface_normals
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +29,8 @@ ASSET_DIR = ROOT / "ldjy_retargeting" / "assets" / "robots" / "ldjy_hand"
 URDF_DIR = ASSET_DIR / "urdf"
 MJCF_DIR = ASSET_DIR / "mjcf"
 FINGERS = ("finger1", "finger2", "finger3", "thumb", "finger4")
+POSITION_ACTUATOR_KP = 3.0
+POSITION_ACTUATOR_KV = 0.4
 CAD_NAIL_TO_PULP = np.array((0.0, 1.0, 0.0))
 MIRROR_X = np.diag((-1.0, 1.0, 1.0))
 MESH_COLLISION_BODIES = (
@@ -216,26 +218,6 @@ def add_pad_sites(
         )
 
 
-def pad_surface_normals(
-    model: mujoco.MjModel, side: str, pad_positions: Mapping[str, np.ndarray]
-) -> dict[str, np.ndarray]:
-    """Return outward link4-local normals at the calibrated pad points."""
-    data = mujoco.MjData(model)
-    mujoco.mj_forward(model, data)
-    normals = {}
-    for finger in FINGERS:
-        position = np.asarray(pad_positions[finger], dtype=float).copy()
-        if side == "left":
-            position[0] *= -1.0
-        surface = link4_visual_surface(model, data, finger, side)
-        point = surface.project(position)
-        normal = surface.normals[point.face]
-        if normal @ (surface.position(point) - surface.vertices.mean(axis=0)) < 0.0:
-            normal = -normal
-        normals[finger] = normal
-    return normals
-
-
 def build_model(
     side: str,
     *,
@@ -265,7 +247,7 @@ def build_model(
             root,
             calibrated_points,
             side,
-            pad_surface_normals(source_model, side, calibrated_points),
+            pad_surface_normals(source_model, calibrated_points, side),
         )
 
     actuator = ET.SubElement(root, "actuator")
@@ -276,7 +258,8 @@ def build_model(
             actuator,
             "position",
             {
-                "name": f"{name}_actuator", "joint": name, "kp": "0.3", "kv": "0.02",
+                "name": f"{name}_actuator", "joint": name,
+                "kp": str(POSITION_ACTUATOR_KP), "kv": str(POSITION_ACTUATOR_KV),
                 "ctrlrange": f"{lower:.12g} {upper:.12g}", "forcerange": "-1 1",
             },
         )

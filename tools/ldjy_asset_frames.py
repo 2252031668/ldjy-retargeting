@@ -10,7 +10,10 @@ express their task frames in this same coordinate system.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
+import yaml
 
 
 # CAD right-hand coordinates -> MANO right-hand wrist coordinates. This is a
@@ -28,6 +31,37 @@ RIGHT_MANO_FROM_CAD = np.array(
 # behind the physical palm and makes the four non-thumb finger rays coplanar
 # at the zero pose.
 WRIST_IN_CAD = np.array((0.0, -0.015, -0.03), dtype=np.float64)
+DEFAULT_ROOT_PALM_TRANSLATION = -(RIGHT_MANO_FROM_CAD @ WRIST_IN_CAD)
+
+ROOT = Path(__file__).resolve().parents[1]
+RETARGET_WRIST_CALIBRATION_PATH = (
+    ROOT / "ldjy_retargeting" / "assets" / "robots" / "ldjy_hand" / "retarget_wrist_calibration.yaml"
+)
+
+
+def _calibrated_root_frames() -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """Load the accumulated MANO-wrist point and root-to-palm translation for each side."""
+    default_points = {side: np.zeros(3) for side in ("right", "left")}
+    default_translations = {side: DEFAULT_ROOT_PALM_TRANSLATION.copy() for side in default_points}
+    if not RETARGET_WRIST_CALIBRATION_PATH.exists():
+        return default_points, default_translations
+    payload = yaml.safe_load(RETARGET_WRIST_CALIBRATION_PATH.read_text(encoding="utf-8")) or {}
+    points, translations = {}, {}
+    for side in default_points:
+        entry = payload.get(side, {})
+        point = np.asarray(
+            entry.get("mano_joint0_in_original_root", entry.get("mano_joint0_in_previous_root", default_points[side])),
+            dtype=float,
+        )
+        translation = np.asarray(entry.get("root_to_palm_translation", default_translations[side]), dtype=float)
+        if point.shape != (3,) or translation.shape != (3,):
+            raise ValueError(f"invalid {side} retarget wrist calibration")
+        points[side] = point
+        translations[side] = translation
+    return points, translations
+
+
+RETARGET_WRIST_POINT_IN_ORIGINAL_ROOT, _ROOT_PALM_TRANSLATIONS = _calibrated_root_frames()
 
 
 def root_palm_translation(side: str) -> np.ndarray:
@@ -38,4 +72,4 @@ def root_palm_translation(side: str) -> np.ndarray:
     """
     if side not in ("right", "left"):
         raise ValueError(f"Unsupported side for the frame contract: {side}")
-    return -(RIGHT_MANO_FROM_CAD @ WRIST_IN_CAD)
+    return _ROOT_PALM_TRANSLATIONS[side].copy()

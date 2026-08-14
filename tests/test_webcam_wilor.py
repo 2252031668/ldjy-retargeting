@@ -28,6 +28,17 @@ def detection(*, is_right: bool, area: float, value: float):
 
 
 class WebcamWiLoRTests(unittest.TestCase):
+    def test_requires_cuda_for_wilor_runner(self):
+        from input_devices.webcam_wilor import WebcamWiLoR
+
+        torch = SimpleNamespace(
+            __version__="test",
+            version=SimpleNamespace(cuda="12.8"),
+            cuda=SimpleNamespace(is_available=lambda: False),
+        )
+        with self.assertRaisesRegex(RuntimeError, "requires CUDA"):
+            WebcamWiLoR._require_cuda(torch)
+
     def test_selects_the_largest_detection_for_requested_hand_side(self):
         from input_devices.webcam_wilor import WebcamWiLoR
 

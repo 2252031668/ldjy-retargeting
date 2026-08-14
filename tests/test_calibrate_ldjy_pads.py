@@ -2,6 +2,7 @@ import numpy as np
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from scipy.spatial.transform import Rotation
 
 from ldjy_retargeting.pad_calibration import SurfacePoint, TriangleSurface
 
@@ -125,7 +126,9 @@ def test_builders_add_fixed_pad_nodes_and_sites_from_calibration_points():
         "finger4": np.array([0.013, 0.014, 0.015]),
     }
     urdf = ET.Element("robot")
-    add_pad_frames(urdf, points)
+    normals = {finger: np.array([0.0, 0.0, 1.0]) for finger in points}
+    normals["finger2"] = np.array([0.0, 1.0, 0.0])
+    add_pad_frames(urdf, points, normals)
 
     joint = urdf.find("./joint[@name='finger2_pad_fixed']")
     assert joint.find("parent").attrib["link"] == "finger2_link4"
@@ -133,6 +136,8 @@ def test_builders_add_fixed_pad_nodes_and_sites_from_calibration_points():
     np.testing.assert_allclose(
         np.fromstring(joint.find("origin").attrib["xyz"], sep=" "), points["finger2"]
     )
+    rotation = Rotation.from_euler("xyz", np.fromstring(joint.find("origin").attrib["rpy"], sep=" "))
+    np.testing.assert_allclose(rotation.as_matrix()[:, 2], normals["finger2"], atol=1e-10)
 
     mjcf = ET.fromstring(
         "<mujoco><worldbody>" + "".join(

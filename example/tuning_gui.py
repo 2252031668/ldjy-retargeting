@@ -20,9 +20,6 @@ EXAMPLE_DIR = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from ldjy_retargeting.simulation_timing import physics_steps_for_tick
-
-
 DEBUG_CONTROL_HZ = 120
 INPUT_DEVICE_TYPES = ("webcam", "webcam_wilor")
 MEDIAPIPE_ONLY_PARAMETER_PREFIX = "video_input."
@@ -80,6 +77,10 @@ def algorithm_choices() -> tuple[AlgorithmChoice, ...]:
         AlgorithmChoice(
             "adaptive_wilor", "Adaptive Analytical (WiLoR 21 点)",
             "adaptive_analytical_wilor.yaml", ("webcam_wilor",),
+        ),
+        AlgorithmChoice(
+            "mano_pad_pose_wilor", "MANO 指腹捏合 IK (WiLoR)",
+            "mano_pad_pose_wilor.yaml", ("webcam_wilor",),
         ),
     )
 
@@ -148,6 +149,9 @@ def parameter_specs_for_selection(algorithm_key: str, input_device_type: str):
     choice = algorithm_choice(algorithm_key)
     if not choice.supports_input(input_device_type):
         raise ValueError(f"{choice.label} does not support {input_device_type}")
+    if algorithm_key == "mano_pad_pose_wilor":
+        from ldjy_retargeting.tuning.parameters import pad_parameter_specs
+        return pad_parameter_specs()
     return parameter_specs_for_input(input_device_type)
 
 
@@ -172,6 +176,17 @@ def _visible_mesh_alpha(model, alpha: float = 0.3) -> None:
             and model.geom_rgba[geom_id, 3] > 0
         ):
             model.geom_rgba[geom_id, 3] = alpha
+
+
+def apply_debug_kinematic_pose(model, data, actuator_targets) -> None:
+    """Display the retargeting command directly, without actuator dynamics."""
+    import mujoco
+
+    for actuator_id, target in enumerate(np.asarray(actuator_targets, dtype=np.float64)):
+        joint_id = model.actuator_trnid[actuator_id, 0]
+        data.qpos[model.jnt_qposadr[joint_id]] = target
+    data.qvel[:] = 0.0
+    mujoco.mj_forward(model, data)
 
 
 class MuJoCoDebugWorker(threading.Thread):
@@ -211,18 +226,23 @@ class MuJoCoDebugWorker(threading.Thread):
 
     def submit(self, qpos: np.ndarray, diagnostics: dict[str, Any], optimizer: Any) -> None:
         """Replace the latest optimizer command consumed by the viewer thread."""
-        keypoints = diagnostics.get("mediapipe_kp")
-        if keypoints is None:
-            keypoints = diagnostics["joints_task_m"]
+        keypoints = diagnostics.get("mediapipe_kp", diagnostics.get("joints_task_m"))
         pinch_alphas = np.asarray(
             diagnostics.get("pinch_alphas", np.zeros(5)), dtype=np.float64
         )
         if pinch_alphas.shape == (4,):
             pinch_alphas = np.r_[pinch_alphas.max(initial=0.0), pinch_alphas]
         frame_diagnostics = {
-            "mediapipe_kp": np.asarray(keypoints, dtype=np.float64).copy(),
             "pinch_alphas": pinch_alphas.copy(),
         }
+        if keypoints is not None:
+            frame_diagnostics["mediapipe_kp"] = np.asarray(keypoints, dtype=np.float64).copy()
+        for name in (
+            "pad_targets_m", "pad_target_normals", "pad_actual_m", "pad_actual_normals",
+            "pad_errors_m", "pad_normal_errors",
+        ):
+            if name in diagnostics:
+                frame_diagnostics[name] = np.asarray(diagnostics[name], dtype=np.float64).copy()
         frame = (
             np.asarray(qpos, dtype=np.float64).copy(),
             frame_diagnostics,
@@ -263,14 +283,7 @@ class MuJoCoDebugWorker(threading.Thread):
                 for i in range(model.nu)
             ]
             qpos_perm: np.ndarray | None = None
-            for actuator_id in range(model.nu):
-                if model.actuator_ctrllimited[actuator_id]:
-                    lower, upper = model.actuator_ctrlrange[actuator_id]
-                    data.ctrl[actuator_id] = np.clip(0.0, lower, upper)
-            for _ in range(100):
-                mujoco.mj_step(model, data)
 
-            control_tick = 0
             next_control_tick = time.monotonic()
             applied_mjcf_path = mjcf_path
             while viewer.is_running() and not self._stop_event.is_set():
@@ -301,25 +314,18 @@ class MuJoCoDebugWorker(threading.Thread):
 
                 with viewer.lock():
                     if frame is not None and not paused:
-                        data.ctrl[:] = actuator_targets
-                    if not paused:
-                        physics_steps = physics_steps_for_tick(
-                            control_tick, model.opt.timestep, DEBUG_CONTROL_HZ
-                        )
-                        for _ in range(physics_steps):
-                            mujoco.mj_step(model, data)
+                        apply_debug_kinematic_pose(model, data, actuator_targets)
                     if frame is not None:
                         overlay.draw(
                             viewer.user_scn,
                             data,
                             optimizer,
-                            diagnostics["mediapipe_kp"],
+                            diagnostics.get("mediapipe_kp"),
                             diagnostics["pinch_alphas"],
+                            diagnostics=diagnostics,
                         )
                 viewer.sync()
 
-                if not paused:
-                    control_tick += 1
                 next_control_tick += 1.0 / DEBUG_CONTROL_HZ
                 remaining = next_control_tick - time.monotonic()
                 if remaining > 0:
@@ -1256,9 +1262,19 @@ def _run_gui(args: argparse.Namespace) -> int:
             if np.allclose(fingers, 0):
                 return
             try:
-                self._capture_calibration_frame(fingers)
-                qpos, diagnostics = self.runtime.process(fingers)
-                self.debug_worker.submit(qpos, diagnostics, self.runtime.retargeter.optimizer)
+                if self.algorithm_key == "mano_pad_pose_wilor":
+                    parameters = (
+                        self.device.get_mano_parameters()
+                        if self.context.mode is RunMode.LIVE
+                        else self.replay.mano_parameters_at(self.replay.current_index)
+                    )
+                    if parameters is None:
+                        return
+                    qpos, diagnostics = self.runtime.process_mano_parameters(parameters)
+                else:
+                    self._capture_calibration_frame(fingers)
+                    qpos, diagnostics = self.runtime.process(fingers)
+                self.debug_worker.submit(qpos, diagnostics, self.runtime.optimizer)
             except Exception as exc:
                 self.status_label.setText(f"重定向失败: {exc}")
 

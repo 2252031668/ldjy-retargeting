@@ -22,7 +22,7 @@ from ldjy_retargeting.retarget_tip_frames import (
     normalize_tip_offsets,
     task_frame_axes,
 )
-from ldjy_retargeting.pad_calibration import load_pad_points
+from ldjy_retargeting.pad_calibration import load_pad_points, pad_surface_normals
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -131,14 +131,29 @@ def add_tip_frames(root: ET.Element, tip_positions: dict[str, np.ndarray]) -> No
         ET.SubElement(joint, "origin", {"xyz": numbers(position), "rpy": "0 0 0"})
 
 
-def add_pad_frames(root: ET.Element, pad_positions: Mapping[str, np.ndarray]) -> None:
-    """Attach calibrated pad points as fixed children of the distal links."""
+def add_pad_frames(
+    root: ET.Element,
+    pad_positions: Mapping[str, np.ndarray],
+    pad_normals: Mapping[str, np.ndarray] | None = None,
+) -> None:
+    """Attach calibrated pad frames with local Z aligned to the surface normal."""
     for finger in FINGERS:
         ET.SubElement(root, "link", {"name": f"{finger}_pad"})
         joint = ET.SubElement(root, "joint", {"name": f"{finger}_pad_fixed", "type": "fixed"})
         ET.SubElement(joint, "parent", {"link": f"{finger}_link4"})
         ET.SubElement(joint, "child", {"link": f"{finger}_pad"})
-        ET.SubElement(joint, "origin", {"xyz": numbers(pad_positions[finger]), "rpy": "0 0 0"})
+        rotation = np.eye(3)
+        if pad_normals is not None:
+            normal = np.asarray(pad_normals[finger], dtype=float)
+            if normal.shape != (3,) or np.linalg.norm(normal) <= 1e-12:
+                raise ValueError(f"invalid pad normal for {finger}")
+            rotation = Rotation.align_vectors([normal], [[0.0, 0.0, 1.0]])[0].as_matrix()
+        rpy = Rotation.from_matrix(rotation).as_euler("xyz")
+        ET.SubElement(
+            joint,
+            "origin",
+            {"xyz": numbers(pad_positions[finger]), "rpy": numbers(rpy)},
+        )
 
 
 def add_mano_root(root: ET.Element, side: str) -> None:
@@ -187,7 +202,7 @@ def build_urdf(
     add_tip_frames(root, distal_tip_positions(source_model, offsets))
     calibrated_points = load_pad_points() if pad_points is None else pad_points
     if calibrated_points is not None:
-        add_pad_frames(root, calibrated_points)
+        add_pad_frames(root, calibrated_points, pad_surface_normals(source_model, calibrated_points))
     if side == "left":
         mirror_cad_tree(root)
     add_mano_root(root, side)

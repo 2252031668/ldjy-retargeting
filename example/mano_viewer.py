@@ -150,6 +150,7 @@ class MANOModel:
             num_betas=10,
         )
         self.faces = self.mano.faces  # (F, 3) int32
+        self.lbs_weights = self.mano.lbs_weights.detach().cpu().numpy()
         self.n_verts = int(self.mano.v_template.shape[0])  # 778
         self.n_faces = int(self.faces.shape[0])  # 1538
 

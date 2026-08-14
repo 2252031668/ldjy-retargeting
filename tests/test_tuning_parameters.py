@@ -43,6 +43,21 @@ class TuningParameterTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "d1.*d2"):
             validate_runtime_config(invalid)
 
+    def test_mano_pad_config_gets_pinch_defaults(self):
+        config = {
+            "optimizer": {"type": "ManoPadPoseOptimizer"},
+            "retarget": {"pad_ik": {}},
+        }
+
+        normalize_runtime_config(config)
+
+        self.assertEqual(config["retarget"]["pad_ik"]["pinch_threshold_cm"], 2.0)
+        self.assertEqual(config["retarget"]["pad_ik"]["pinch_min_distance_cm"], 0.1)
+        self.assertEqual(config["retarget"]["pad_ik"]["pinch_distance_weight"], 4.0)
+        self.assertFalse(config["retarget"]["pad_ik"]["thumb_contact_surface_optimization"])
+        self.assertEqual(config["retarget"]["pad_ik"]["thumb_contact_surface_weight"], 300.0)
+        self.assertEqual(config["retarget"]["pad_ik"]["pinch_position_weight_scale"], 0.25)
+
 
 if __name__ == "__main__":
     unittest.main()

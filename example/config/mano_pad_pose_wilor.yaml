@@ -1,0 +1,91 @@
+optimizer:
+  type: ManoPadPoseOptimizer
+  hand_side: right
+  mano_reference: ../../ldjy_retargeting/assets/robots/ldjy_hand/mano_ldjy_reference.yaml
+  mano_pad_vertex_ids:
+    Thumb: 763
+    Index: 355
+    Middle: 438
+    Ring: 573
+    Pinky: 690
+  mano_pad_3pt_vertex_ids:
+    Index: [328, 343, 350]
+    Middle: [438, 455, 439]
+
+retarget:
+  pad_ik:
+    position_scale_m: 0.01
+    normal_scale: 1.0
+    maxeval: 30
+    ftol_rel: 0.00001
+    pinch_threshold_cm: 3.0
+    pinch_min_distance_cm: 0.1
+    pinch_distance_weight: 8.0
+    thumb_contact_surface_optimization: false
+    thumb_contact_surface_weight: 300.0
+    pinch_position_weight_scale: 0.25
+    thumb:
+      enabled: true
+      use_positions: true
+      position_weight: 1.0
+      use_normals: true
+      normal_weight: 0.2
+      smooth_weight: 0.05
+      lp_alpha: 0.2
+    finger1:
+      enabled: true
+      use_positions: true
+      position_weight: 1.0
+      use_normals: true
+      normal_weight: 0.2
+      smooth_weight: 0.05
+      lp_alpha: 0.2
+    finger2:
+      enabled: true
+      use_positions: true
+      position_weight: 1.0
+      use_normals: true
+      normal_weight: 0.2
+      smooth_weight: 0.05
+      lp_alpha: 0.2
+    finger3:
+      enabled: true
+      use_positions: true
+      position_weight: 1.0
+      use_normals: true
+      normal_weight: 0.2
+      smooth_weight: 0.05
+      lp_alpha: 0.2
+    finger4:
+      enabled: true
+      use_positions: true
+      position_weight: 1.0
+      use_normals: true
+      normal_weight: 0.2
+      smooth_weight: 0.05
+      lp_alpha: 0.2
+
+  lp_alpha: 0.25
+
+tip_offsets:
+  thumb:
+    axis_mm: 0.0
+    surface_mm: 0.0
+  finger1:
+    axis_mm: 0.0
+    surface_mm: 0.0
+  finger2:
+    axis_mm: 0.0
+    surface_mm: 0.0
+  finger3:
+    axis_mm: 0.0
+    surface_mm: 0.0
+  finger4:
+    axis_mm: 0.0
+    surface_mm: 0.0
+
+render:
+  camera:
+    azimuth: 135
+    elevation: -20
+    distance: 0.5

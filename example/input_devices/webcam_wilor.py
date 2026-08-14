@@ -5,6 +5,7 @@ from __future__ import annotations
 import threading
 import time
 from copy import deepcopy
+import os
 
 import cv2
 import numpy as np
@@ -61,9 +62,24 @@ class WebcamWiLoR(InputDeviceBase):
         self._worker_thread.start()
 
     @staticmethod
+    def _require_cuda(torch_module) -> None:
+        if torch_module.cuda.is_available():
+            return
+        device_count = getattr(torch_module.cuda, "device_count", lambda: 0)()
+        visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>")
+        raise RuntimeError(
+            "WiLoR requires CUDA, but Torch cannot access an accelerator. "
+            f"torch={torch_module.__version__}, torch_cuda={torch_module.version.cuda}; "
+            f"device_count={device_count}, CUDA_VISIBLE_DEVICES={visible_devices!r}; "
+            "check the NVIDIA driver and nvidia-smi."
+        )
+
+    @staticmethod
     def _create_runner():
         try:
+            import torch
             from ldjy_retargeting.wilor_runtime import WiLoRRunner, validate_wilor_assets
+            WebcamWiLoR._require_cuda(torch)
             return WiLoRRunner(
                 assets=validate_wilor_assets(),
                 device_name="cuda",
@@ -137,6 +153,19 @@ class WebcamWiLoR(InputDeviceBase):
             return {
                 "left_fingers": self._latest_result["left_fingers"].copy(),
                 "right_fingers": self._latest_result["right_fingers"].copy(),
+            }
+
+    def get_mano_parameters(self) -> dict[str, np.ndarray] | None:
+        """Return the newest selected WiLoR MANO parameters."""
+        with self._lock:
+            detection = self._last_valid_mano
+            if detection is None:
+                return None
+            return {
+                "hand_pose": np.asarray(detection.hand_pose, dtype=np.float64).copy(),
+                "global_orient": np.asarray(detection.global_orient, dtype=np.float64).copy(),
+                "betas": np.asarray(detection.betas, dtype=np.float64).copy(),
+                "translation": np.zeros(3, dtype=np.float64),
             }
 
     def set_paused(self, paused: bool) -> None:

@@ -9,6 +9,7 @@ from ldjy_retargeting.mano_ldjy_overlay import (
     average_surface_normal,
     apply_registration,
     fit_static_registration,
+    mirror_registration_for_left,
     solve_exact_hand_pose_constraints,
 )
 
@@ -52,6 +53,22 @@ def test_registration_is_independent_static_scale_rotation_and_translation():
     )
 
     np.testing.assert_allclose(registered, [[0.1, 2.2, 0.3]], atol=1e-12)
+
+
+def test_left_registration_mirrors_the_right_hand_registration():
+    points = np.array([[0.01, -0.02, 0.03], [-0.04, 0.05, 0.06]])
+    rotation = np.array([0.4, -0.3, 0.2])
+    translation = np.array([0.1, -0.2, 0.3])
+    mirror = np.diag([1.0, -1.0, 1.0])
+
+    left_rotation, left_translation, left_scale = mirror_registration_for_left(
+        rotation, translation, 1.2
+    )
+
+    np.testing.assert_allclose(
+        apply_registration(points @ mirror, left_rotation, left_translation, left_scale),
+        apply_registration(points, rotation, translation, 1.2) @ mirror,
+    )
 
 
 def test_surface_normal_uses_mesh_face_winding_not_arbitrary_pad_point_order():

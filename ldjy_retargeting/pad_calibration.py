@@ -240,6 +240,28 @@ def link4_visual_surface(
     return TriangleSurface(local_vertices, faces)
 
 
+def pad_surface_normals(
+    model: mujoco.MjModel,
+    pad_positions: dict[str, np.ndarray],
+    side: str = "",
+) -> dict[str, np.ndarray]:
+    """Return outward link4-local normals at calibrated pad points."""
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    normals = {}
+    for finger in FINGERS:
+        position = np.asarray(pad_positions[finger], dtype=float).copy()
+        if side == "left":
+            position[0] *= -1.0
+        surface = link4_visual_surface(model, data, finger, side)
+        point = surface.project(position)
+        normal = surface.normals[point.face]
+        if normal @ (surface.position(point) - surface.vertices.mean(axis=0)) < 0.0:
+            normal = -normal
+        normals[finger] = normal
+    return normals
+
+
 def load_pad_points(path: Path = DEFAULT_PAD_POINTS_PATH) -> dict[str, np.ndarray] | None:
     if not path.exists():
         return None

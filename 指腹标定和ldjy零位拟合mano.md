@@ -21,6 +21,8 @@ ldjy_retargeting/assets/robots/ldjy_hand/mjcf/ldjy_{right,left}_hand.xml
 
 原始 `palm` 是机械 CAD 根，位置偏向手背，不能作为任务向量的原点。生成的模型将无质量、无网格、无碰撞的
 `{side}_retarget_wrist` 作为根；原始 `{side}_palm` 是它的固定子节点，仍承载全部关节和网格。
+`retarget_wrist` 的位置由 `retarget_wrist_calibration.yaml` 固定：右手取零位叠加拟合后 MANO joint 0 在
+LDJY 网格上的对应点，左手取其现有 MANO 坐标约定下的镜像点。该根保留原有轴方向，不采用 MANO 的根朝向。
 
 右/左手均使用下列静态变换，其中左手先在 CAD X=0 平面镜像，再应用该根变换：
 
@@ -48,6 +50,19 @@ uv run python -m unittest tests.test_ldjy_asset_generation -v
 
 最后一条测试会验证左右两侧在 `q=0` 时的 `retarget_wrist`、每指 PIP、DIP 与 tip 在 Pinocchio URDF 和
 MuJoCo MJCF 中逐点一致。
+
+若重新拟合了零位 MANO reference，并且要把新拟合的 MANO joint 0 重新设为 `retarget_wrist`，执行：
+
+```bash
+uv run --extra wilor python tools/bake_ldjy_retarget_wrist.py --apply
+uv run python tools/build_ldjy_urdf.py
+uv run python tools/build_ldjy_mjcf.py
+uv run python tools/build_openarm_hand_urdf.py
+uv run python tools/build_openarm_hand_mjcf.py
+```
+
+该工具只重定义根到 CAD palm 的固定平移，并同步重表达 `mano_ldjy_reference.yaml` 的静态 registration 平移；
+不修改根轴、registration rotation 或 scale。
 
 ## 指腹与 MANO-LDJY 标定
 

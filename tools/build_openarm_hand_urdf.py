@@ -242,6 +242,9 @@ def standalone_task_frames(
                     "tip": wrist * data.oMf[
                         model.getFrameId(f"{side}_{finger}_tip", pin.BODY)
                     ],
+                    "pad": wrist * data.oMf[
+                        model.getFrameId(f"{side}_{finger}_pad", pin.BODY)
+                    ],
                 }
     return result
 
@@ -287,6 +290,34 @@ def add_tip_frames(
         ET.SubElement(joint, "origin", {"xyz": numbers(position), "rpy": "0 0 0"})
 
 
+def add_pad_frames(
+    root: ET.Element,
+    model: mujoco.MjModel,
+    task_frames: Mapping[str, Mapping[str, Mapping[str, pin.SE3]]],
+    side: str,
+) -> None:
+    """Attach the standalone LDJY calibrated pad pose to each OpenArm distal link."""
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    world_from_wrist, wrist_position = openarm_wrist_pose(model, data, side)
+    for finger, frames in task_frames[side].items():
+        joint4 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, f"{side}_{finger}_joint4")
+        body_id = model.jnt_bodyid[joint4]
+        world_from_link4 = data.xmat[body_id].reshape(3, 3)
+        target = frames["pad"]
+        target_world = wrist_position + world_from_wrist @ target.translation
+        transform = np.eye(4)
+        transform[:3, :3] = world_from_link4.T @ world_from_wrist @ target.rotation
+        transform[:3, 3] = world_from_link4.T @ (target_world - data.xpos[body_id])
+        frame_name = f"{side}_{finger}_pad_frame"
+        ET.SubElement(root, "link", {"name": frame_name})
+        joint = ET.SubElement(root, "joint", {"name": f"{frame_name}_fixed", "type": "fixed"})
+        ET.SubElement(joint, "parent", {"link": f"{side}_{finger}_link4"})
+        ET.SubElement(joint, "child", {"link": frame_name})
+        origin = ET.SubElement(joint, "origin")
+        set_origin_from_transform(origin, transform)
+
+
 def build_urdf(
     *,
     offsets: Mapping[str, Mapping[str, float]] | None = None,
@@ -303,14 +334,12 @@ def build_urdf(
     source_model = visual_surface_model(root)
     task_frames = standalone_task_frames(offsets)
     task_points = {
-        side: {
-            finger: frame["tip"].translation.copy()
-            for finger, frame in fingers.items()
-        }
+        side: {finger: frame["tip"].translation.copy() for finger, frame in fingers.items()}
         for side, fingers in task_frames.items()
     }
     for side in ("left", "right"):
         add_tip_frames(root, source_model, task_points, side)
+        add_pad_frames(root, source_model, task_frames, side)
     root.set("name", "openarm_bimanual_mano")
     ET.indent(root, space="  ")
     output_path.parent.mkdir(parents=True, exist_ok=True)

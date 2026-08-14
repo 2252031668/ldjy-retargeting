@@ -341,9 +341,11 @@ class BaseOptimizer(ABC):
             Optimizer instance
         """
         from .adaptive_analytical import AdaptiveOptimizerAnalytical
+        from .mano_pad_pose import ManoPadPoseOptimizer
 
         registry = {
             'AdaptiveOptimizerAnalytical': AdaptiveOptimizerAnalytical,
+            'ManoPadPoseOptimizer': ManoPadPoseOptimizer,
         }
         opt_type = config.get('optimizer', {}).get('type', 'AdaptiveOptimizerAnalytical')
 

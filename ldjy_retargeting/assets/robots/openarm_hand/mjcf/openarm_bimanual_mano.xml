@@ -102,8 +102,8 @@
                       <inertial pos="0.0222931 -0.00134899 -0.0128642" quat="0.697548 0.115839 0.187996 0.681664" mass="0.0438461" diaginertia="2.07108e-05 1.97474e-05 6.23853e-06" />
                       <joint name="openarm_left_joint7" pos="0 0 0" axis="1 0 0" range="-1.79151 1.35009" actuatorfrcrange="-7 7" armature="0.02" damping="5" />
                       <geom name="left_hand_adapter_visual_surface_collision_0" type="mesh" rgba="0.88 0.5 0.055 1" mesh="left_adapter_local" />
-                      <body name="left_retarget_wrist" pos="0.010896 -0.0145499 -0.0401069" quat="0.0369582 0.706146 -0.706136 0.0369265">
-                        <body name="left_palm" pos="-0.015 0 0.03" quat="0.707107 0 0 0.707107">
+                      <body name="left_retarget_wrist" pos="-0.000296798 -0.0145662 -0.0450182" quat="0.0369582 0.706146 -0.706136 0.0369265">
+                        <body name="left_palm" pos="-0.0145035 -0.0111926 0.0251134" quat="0.707107 0 0 0.707107">
                           <inertial pos="0.00258899 -0.00264138 0.0187571" quat="0 0.707107 0 0.707107" mass="0.327044" diaginertia="0.000319022 0.000229764 0.000145648" />
                           <geom name="left_palm_visual_surface_collision_0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="left_palm" />
                           <body name="left_finger1_link1" pos="-0.0233 0.00276462 0.0495" quat="0.5 0.5 -0.5 -0.5">
@@ -125,7 +125,7 @@
                                   <body name="left_finger1_tip" pos="0 0.00339976 0.0297165">
                                     <site name="left_finger1_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="left_finger1_pad_frame" pos="0.00065 0.00450561 0.0203261" quat="0.50753 -0.492355 0.492355 0.50753">
+                                  <body name="left_finger1_pad_frame" pos="0.000887897 -0.00739003 0.020226" quat="0.813144 0.582063 4.38867e-08 -1.96271e-12">
                                     <site name="left_finger1_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
@@ -151,7 +151,7 @@
                                   <body name="left_finger2_tip" pos="0 0.00357323 0.0297108">
                                     <site name="left_finger2_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="left_finger2_pad_frame" pos="0.00065 0.00455589 0.0203149" quat="0.506921 -0.492982 0.492982 0.506921">
+                                  <body name="left_finger2_pad_frame" pos="0.000345142 -0.00717388 0.020728" quat="0.813862 0.581058 -8.91253e-08 -1.99178e-12">
                                     <site name="left_finger2_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
@@ -174,10 +174,10 @@
                                   <inertial pos="0.00045801 0.00010552 0.0141576" quat="0 0.707107 0 0.707107" mass="0.0106909" diaginertia="9.67708e-07 7.78738e-07 5.07636e-07" />
                                   <joint name="left_finger3_joint4" pos="0 0 0" axis="1 0 0" range="-0.4777 1.5634" actuatorfrcrange="-0.2044 0.2044" armature="0.002" damping="0.02" />
                                   <geom name="left_finger3_link4_visual_surface_collision_0" pos="-0.0148329 0.013711 -0.134406" quat="0.996356 0 -0.0852938 0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="left_finger3_link4" />
-                                  <body name="left_finger3_tip" pos="1.44289e-12 0.00682693 0.0295041">
+                                  <body name="left_finger3_tip" pos="1.4209e-12 0.00682693 0.0295041">
                                     <site name="left_finger3_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="left_finger3_pad_frame" pos="0.00065 0.00541136 0.0201039" quat="-0.496375 0.503599 -0.503599 -0.496375">
+                                  <body name="left_finger3_pad_frame" pos="0.000646579 -0.00638899 0.0207611" quat="0.825977 0.563704 -7.23701e-08 -1.99261e-12">
                                     <site name="left_finger3_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
@@ -203,7 +203,7 @@
                                   <body name="left_thumb_tip" pos="0 -0.0399322 0.00321148">
                                     <site name="left_thumb_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="left_thumb_pad_frame" pos="0.00057 -0.0300544 0.012462" quat="0.706538 -0.0283653 0.0283653 0.706538">
+                                  <body name="left_thumb_pad_frame" pos="3.66216e-05 -0.0285003 0.0127728" quat="0.996777 0.0802264 8.41485e-08 -1.61348e-12">
                                     <site name="left_thumb_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
@@ -229,7 +229,7 @@
                                   <body name="left_finger4_tip" pos="0.000305269 0.00384935 0.0401239">
                                     <site name="left_finger4_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="left_finger4_pad_frame" pos="-0.000527521 0.00552646 0.0306411" quat="0.51451 -0.482439 0.494167 0.508263">
+                                  <body name="left_finger4_pad_frame" pos="-0.000717826 -0.00652128 0.0304803" quat="0.825809 0.56395 -5.77668e-08 -1.82955e-12">
                                     <site name="left_finger4_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
@@ -277,8 +277,8 @@
                       <inertial pos="0.0222931 0.00134899 -0.0128642" quat="0.681664 0.187996 0.115839 0.697548" mass="0.0438461" diaginertia="2.07108e-05 1.97474e-05 6.23853e-06" />
                       <joint name="openarm_right_joint7" pos="0 0 0" axis="1 0 0" range="-1.35009 1.79151" actuatorfrcrange="-7 7" armature="0.02" damping="5" />
                       <geom name="right_hand_adapter_visual_surface_collision_0" type="mesh" rgba="0.88 0.5 0.055 1" mesh="right_adapter_local" />
-                      <body name="right_retarget_wrist" pos="0.010896 0.0145499 -0.0401069" quat="0.0369582 -0.706146 -0.706136 -0.0369265">
-                        <body name="right_palm" pos="-0.015 0 0.03" quat="0.707107 0 0 0.707107">
+                      <body name="right_retarget_wrist" pos="-0.000296798 0.0145662 -0.0450182" quat="0.0369582 -0.706146 -0.706136 -0.0369265">
+                        <body name="right_palm" pos="-0.0145035 0.0111926 0.0251134" quat="0.707107 0 0 0.707107">
                           <inertial pos="-0.00258899 -0.00264138 0.0187571" quat="0 0.707107 0 0.707107" mass="0.327044" diaginertia="0.000319022 0.000229764 0.000145648" />
                           <geom name="right_palm_visual_surface_collision_0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="right_palm" />
                           <body name="right_finger1_link1" pos="0.0233 0.00276462 0.0495" quat="0.5 0.5 0.5 0.5">
@@ -300,7 +300,7 @@
                                   <body name="right_finger1_tip" pos="0 0.00339976 0.0297165">
                                     <site name="right_finger1_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="right_finger1_pad_frame" pos="-0.00065 0.00450561 0.0203261" quat="0.50753 -0.492355 -0.492355 -0.50753">
+                                  <body name="right_finger1_pad_frame" pos="-0.000887897 -0.00739003 0.020226" quat="0.813144 0.582063 -4.38895e-08 -1.96268e-12">
                                     <site name="right_finger1_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
@@ -326,7 +326,7 @@
                                   <body name="right_finger2_tip" pos="0 0.00357323 0.0297108">
                                     <site name="right_finger2_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="right_finger2_pad_frame" pos="-0.00065 0.00455589 0.0203149" quat="0.506921 -0.492982 -0.492982 -0.506921">
+                                  <body name="right_finger2_pad_frame" pos="-0.000345142 -0.00717388 0.020728" quat="0.813862 0.581058 8.91225e-08 -1.99188e-12">
                                     <site name="right_finger2_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
@@ -349,10 +349,10 @@
                                   <inertial pos="-0.00045801 0.00010552 0.0141576" quat="0 0.707107 0 0.707107" mass="0.0106909" diaginertia="9.67708e-07 7.78738e-07 5.07636e-07" />
                                   <joint name="right_finger3_joint4" pos="0 0 0" axis="1 0 0" range="-0.4777 1.5634" actuatorfrcrange="-0.2044 0.2044" armature="0.002" damping="0.02" />
                                   <geom name="right_finger3_link4_visual_surface_collision_0" pos="0.0148329 0.013711 -0.134406" quat="0.996356 0 0.0852938 0" type="mesh" rgba="0.58 0.025 0.035 1" mesh="right_finger3_link4" />
-                                  <body name="right_finger3_tip" pos="-1.50935e-12 0.00682693 0.0295041">
+                                  <body name="right_finger3_tip" pos="-1.48735e-12 0.00682693 0.0295041">
                                     <site name="right_finger3_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="right_finger3_pad_frame" pos="-0.00065 0.00541136 0.0201039" quat="-0.496375 0.503599 0.503599 0.496375">
+                                  <body name="right_finger3_pad_frame" pos="-0.000646579 -0.00638899 0.0207611" quat="0.825977 0.563704 7.23674e-08 -1.99301e-12">
                                     <site name="right_finger3_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
@@ -378,7 +378,7 @@
                                   <body name="right_thumb_tip" pos="0 -0.0399322 0.00321148">
                                     <site name="right_thumb_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="right_thumb_pad_frame" pos="-0.00057 -0.0300544 0.012462" quat="0.706538 -0.0283653 -0.0283653 -0.706538">
+                                  <body name="right_thumb_pad_frame" pos="-3.66216e-05 -0.0285003 0.0127728" quat="0.996777 0.0802264 -8.41449e-08 -1.61315e-12">
                                     <site name="right_thumb_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>
@@ -404,7 +404,7 @@
                                   <body name="right_finger4_tip" pos="-0.000305269 0.00384935 0.0401239">
                                     <site name="right_finger4_tip_site" pos="0 0 0" size="0.003" group="4" />
                                   </body>
-                                  <body name="right_finger4_pad_frame" pos="0.000527521 0.00552646 0.0306411" quat="0.51451 -0.482439 -0.494167 -0.508263">
+                                  <body name="right_finger4_pad_frame" pos="0.000717826 -0.00652128 0.0304803" quat="0.825809 0.56395 5.77643e-08 -1.8295e-12">
                                     <site name="right_finger4_pad_center" type="ellipsoid" pos="0 0 0" size="0.007 0.005 0.001" group="4" rgba="0.9 0.3 0.1 0.5" />
                                   </body>
                                 </body>

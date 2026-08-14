@@ -65,6 +65,14 @@ _DEFAULT_PINCH_THRESHOLDS = {
 _DEFAULT_TIP_OFFSETS = {
     finger: {"axis_mm": 0.0, "surface_mm": 0.0} for finger in ASSET_FINGERS
 }
+_DEFAULT_PAD_IK = {
+    "pinch_threshold_cm": 2.0,
+    "pinch_min_distance_cm": 0.1,
+    "pinch_distance_weight": 4.0,
+    "thumb_contact_surface_optimization": False,
+    "thumb_contact_surface_weight": 300.0,
+    "pinch_position_weight_scale": 0.25,
+}
 
 def _spec(
     path: str,
@@ -163,6 +171,54 @@ def parameter_specs() -> tuple[ParameterSpec, ...]:
                   "沿 PIP 到 DIP 的末节射线移动虚拟 tip，单位毫米。", "正值朝指尖，负值朝指根。", minimum=-15.0, maximum=15.0, step=0.1),
             _spec(f"tip_offsets.{finger}.surface_mm", "末端任务点", f"{asset_labels[finger]} 厚度",
                   "沿指甲盖到指肚方向移动虚拟 tip，单位毫米。", "正值按模型局部指甲-指肚轴移动。", minimum=-15.0, maximum=15.0, step=0.1),
+        ])
+    return tuple(specs)
+
+
+def pad_parameter_specs() -> tuple[ParameterSpec, ...]:
+    """Return the compact controls for the MANO absolute-pad IK mode."""
+    labels = {
+        "thumb": "拇指", "finger1": "食指", "finger2": "中指",
+        "finger3": "无名指", "finger4": "小拇指",
+    }
+    specs = [
+        _spec("retarget.pad_ik.position_scale_m", "指腹捏合 IK", "位置归一化尺度",
+              "位置残差的归一化尺度，单位米。", "只改变位置项数值尺度，不改变目标位置。",
+              minimum=0.001, maximum=0.05, step=0.001),
+        _spec("retarget.pad_ik.maxeval", "指腹捏合 IK", "每指最大迭代",
+              "每根手指独立 IK 的最大迭代次数。", "增大后更容易收敛，但单帧耗时更高。",
+              value_type=int, minimum=1, maximum=200, step=1),
+        _spec("retarget.pad_ik.pinch_threshold_cm", "指腹捏合 IK", "进入捏合距离",
+              "拇指与任一指腹的 MANO 距离低于此值时进入联合捏合 IK，单位厘米。", "增大后更早进入捏合模式。",
+              minimum=0.1, maximum=10.0, step=0.1),
+        _spec("retarget.pad_ik.pinch_min_distance_cm", "指腹捏合 IK", "最小指腹距离",
+              "捏合距离目标的下限，单位厘米。", "增大后让两指腹保留更大的最小间距。",
+              minimum=0.0, maximum=2.0, step=0.01),
+        _spec("retarget.pad_ik.pinch_distance_weight", "指腹捏合 IK", "捏合距离权重",
+              "拇指与活跃手指指腹距离的联合约束权重。", "增大后两根手指更主动靠近 MANO 捏合距离。",
+              minimum=0.0, maximum=50.0, step=0.1),
+        _spec("retarget.pad_ik.thumb_contact_surface_optimization", "指腹捏合 IK", "拇指接触面优化",
+              "捏合时以最近手指和拇指的实时连线作为两侧相对法线。", "启用后忽略该捏合对的 MANO 指腹法线。", bool),
+        _spec("retarget.pad_ik.thumb_contact_surface_weight", "指腹捏合 IK", "拇指接触面权重",
+              "最近捏合对沿两指腹实时连线相对的法线约束权重。", "增大后更优先让两个指腹面相对。",
+              minimum=0.0, maximum=500.0, step=1.0),
+        _spec("retarget.pad_ik.pinch_position_weight_scale", "指腹捏合 IK", "捏合位置权重倍率",
+              "进入捏合后绝对指腹位置项保留的最大比例。", "减小后更早允许两指为接触面和距离主动调整。",
+              minimum=0.0, maximum=1.0, step=0.01),
+        _spec("retarget.lp_alpha", "稳定与滤波", "输出低通系数",
+              "五指 IK 输出的低通滤波系数。", "减小后更平滑但延迟更高。",
+              minimum=0.01, maximum=1.0, step=0.01),
+    ]
+    for finger in ("thumb", "finger1", "finger2", "finger3", "finger4"):
+        label = labels[finger]
+        group = f"指腹 IK / {label}"
+        specs.extend([
+            _spec(f"retarget.pad_ik.{finger}.enabled", group, "参与求解", "是否求解该手指。", "关闭后保持上一帧关节角。", bool),
+            _spec(f"retarget.pad_ik.{finger}.use_positions", group, "指腹位置约束", "是否匹配 wrist 到指腹点的位置。", "关闭后不使用该手指的指腹位置。", bool),
+            _spec(f"retarget.pad_ik.{finger}.position_weight", group, "位置权重", "指腹位置残差权重。", "增大后更优先匹配指腹位置。", minimum=0.0, maximum=20.0, step=0.1),
+            _spec(f"retarget.pad_ik.{finger}.use_normals", group, "指腹法线约束", "是否匹配指腹表面法线。", "关闭后只匹配指腹位置。", bool),
+            _spec(f"retarget.pad_ik.{finger}.normal_weight", group, "法线权重", "指腹法线残差权重。", "增大后更优先匹配接触朝向。", minimum=0.0, maximum=20.0, step=0.1),
+            _spec(f"retarget.pad_ik.{finger}.smooth_weight", group, "平滑权重", "相对上一帧关节角的变化惩罚。", "增大后动作更平滑但响应更慢。", minimum=0.0, maximum=20.0, step=0.01),
         ])
     return tuple(specs)
 
@@ -268,6 +324,11 @@ def normalize_runtime_config(config: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("tip_offsets must be a mapping")
     _merge_defaults(tip_offsets, _DEFAULT_TIP_OFFSETS)
     config["tip_offsets"] = normalize_tip_offsets(config["tip_offsets"])
+    if optimizer.get("type") == "ManoPadPoseOptimizer":
+        pad_ik = retarget.setdefault("pad_ik", {})
+        if not isinstance(pad_ik, dict):
+            raise ValueError("retarget.pad_ik must be a mapping")
+        _merge_defaults(pad_ik, _DEFAULT_PAD_IK)
     return config
 
 

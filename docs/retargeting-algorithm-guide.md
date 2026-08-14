@@ -11,6 +11,11 @@
 - GUI 参数定义：`ldjy_retargeting/tuning/parameters.py`
 - 默认配置：`example/config/adaptive_analytical_video.yaml`
 
+WiLoR 还提供一个不依赖 21 点损失的第一版指腹模式：
+`ManoPadPoseOptimizer` 使用固定机器人形状参数生成 MANO 网格，在 MANO 关节 0 的相对坐标中
+提取五个指腹位置和表面法线，再对 LDJY 五根手指分别求解四个关节。入口配置为
+`example/config/mano_pad_pose_wilor.yaml`，对应的 GUI 选择项是 `MANO 指腹捏合 IK (WiLoR)`。
+
 ## 先给结论
 
 `retarget.segment_scaling` 是人手到机器人任务空间的唯一位置比例表：五根手指各有
@@ -42,8 +47,28 @@ InputDeviceBase
                               └─ NLopt SLSQP + 关节限位
                                    └─ q_raw (20)
                                         └─ 一阶低通滤波
-                                             └─ q_filtered (20) -> MuJoCo / 真机接口
+                                   └─ q_filtered (20) -> MuJoCo / 真机接口
 ```
+
+### MANO 指腹捏合模式
+
+该模式的动态输入是 WiLoR 的绝对局部 `hand_pose (15,3,3)`。每帧在 MANO 边界把矩阵投影到
+合法 SO(3)，转换为轴角，并以参考文件中的固定 `beta_robot` 重新生成机器人尺度 MANO。
+`global_orient`、`translation` 和输入人的 `betas` 在 V1 只做输入记录/校验，不移动固定的
+LDJY `retarget_wrist`，也不从动态姿态中减去 `hand_pose_ref`。
+
+设 MANO 机器人尺度网格中 wrist 为 `j0`，静态注册为 `R,s`，指腹点和法线为 `a_f,n_f`，则
+IK 目标为：
+
+```text
+t_f = s R (a_f - j0)
+v_f = R n_f
+```
+
+LDJY 的 `*_pad` frame 原点就是标定指腹点，局部 Z 轴就是该点的表面法线。每根手指独立使用
+自己的四个关节、URDF 限位和上一帧命令 warm start；位置、法线和上一帧变化分别构成软残差，
+随后再经过低通滤波。当前版本不加入拇指-其他手指的硬接触约束，避免在第一版中把不可行捏合
+强行投影成错误姿态。
 
 所有输入设备最终都应向 `Retargeter.retarget()` 提供同一契约：21 个三维关键点，单位米，
 数组形状 `(21, 3)`。USB 摄像头、视频、回放、RealSense、ZED 和 Vision Pro 的设备获取方式
