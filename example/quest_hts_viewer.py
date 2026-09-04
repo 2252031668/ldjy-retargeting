@@ -313,6 +313,14 @@ def _palm_normal(points: np.ndarray) -> np.ndarray:
     return normal / norm
 
 
+def _to_global_landmarks(points: np.ndarray, wrist) -> tuple[np.ndarray, np.ndarray]:
+    """Map wrist-relative landmarks into the global Quest world frame."""
+    wrist_pos = np.array([wrist.x, wrist.y, wrist.z], dtype=np.float64)
+    rot = wrist_rotation_matrix(wrist)
+    global_points = (rot @ points.T).T + wrist_pos
+    return global_points, rot
+
+
 def draw_hand(
     scene,
     frame: HandFrame,
@@ -325,17 +333,21 @@ def draw_hand(
         frame = convert_hand_frame_unity_left_to_right(frame)
 
     points = landmarks_to_array(frame.landmarks)
-    wrist_pos = np.array([frame.wrist.x, frame.wrist.y, frame.wrist.z], dtype=np.float64)
     lateral = np.array([lateral_offset_m, 0.0, 0.0], dtype=np.float64)
 
+    # Quest sends landmarks in the wrist-local frame; apply wrist 6DoF to get
+    # global coordinates so the skeleton follows the hand in space.
+    global_points, rot = _to_global_landmarks(points, frame.wrist)
+
     if center:
-        # Center the hand on the wrist so the viewer stays focused on hand pose.
-        display_points = points - wrist_pos + lateral
-        wrist_display_pos = display_points[0]
+        # Center on wrist but keep global rotation.
+        wrist_pos = np.array([frame.wrist.x, frame.wrist.y, frame.wrist.z], dtype=np.float64)
+        display_points = global_points - wrist_pos + lateral
+        wrist_display_pos = lateral
     else:
-        # Show absolute Quest world coordinates.
-        display_points = points + lateral
-        wrist_display_pos = wrist_pos + lateral
+        # Preserve absolute Quest world coordinates.
+        display_points = global_points + lateral
+        wrist_display_pos = global_points[0] + lateral
 
     # Draw connection lines first so points sit on top visually.
     for start_idx, end_idx in HAND_CONNECTIONS:
@@ -357,20 +369,19 @@ def draw_hand(
         _add_sphere(scene, pos, FINGER_POINT_RGBA[finger], POINT_RADIUS_M, label=label)
 
     # Draw wrist coordinate axes using the wrist rotation.
-    rot = wrist_rotation_matrix(frame.wrist)
     _add_axis(scene, wrist_display_pos, rot, WRIST_AXIS_LENGTH_M, WRIST_AXIS_RADIUS_M)
 
     # Draw palm normal arrow to make hand rotation obvious.
-    normal = rot @ _palm_normal(display_points)
+    palm_normal = _palm_normal(global_points)
     _add_capsule(
         scene,
         wrist_display_pos,
-        wrist_display_pos + normal * PALM_NORMAL_LENGTH_M,
+        wrist_display_pos + palm_normal * PALM_NORMAL_LENGTH_M,
         PALM_NORMAL_RGBA,
         PALM_NORMAL_RADIUS_M,
     )
 
-    return wrist_pos, np.mean(display_points, axis=0)
+    return global_points[0], np.mean(display_points, axis=0)
 
 
 def draw_status_label(scene, text: str) -> None:
