@@ -417,7 +417,7 @@ def main() -> None:
                 stats = receiver.get_stats()
                 if stats["frames"]:
                     print(
-                        f"[{now - stats['start_time']:.1f}s] frames={stats['frames']} "
+                        f"[{stats['elapsed_sec']:.1f}s] frames={stats['frames']} "
                         f"fps={stats['fps']:.1f} errors={stats['errors']}"
                     )
                 else:
