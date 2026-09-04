@@ -590,6 +590,19 @@ wheels = [
 ]
 
 [[package]]
+name = "hand-tracking-sdk"
+version = "1.1.0"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+dependencies = [
+    { name = "lark" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/8e/a6/deef547513eeb9ef9e08a1e56e653d781a3ec66b91d9feb876863b45087a/hand_tracking_sdk-1.1.0.tar.gz", hash = "sha256:c3b2ff1c7edba941c629c54c91a8b1142eecffa61ca7c79d8080080db10ca60c", size = 17226492, upload-time = "2026-03-11T08:06:22.562Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/84/86/5c3d23152e1cf9adb78f99fdba0ce4cda2d8db600f47e11243d7314de956/hand_tracking_sdk-1.1.0-py3-none-any.whl", hash = "sha256:2f0118023c964b7f2b650956bb1b4881145363bc28e9fc4d48a9bbe63eb3c364", size = 49103, upload-time = "2026-03-11T08:06:20.479Z" },
+]
+
+[[package]]
 name = "hf-xet"
 version = "1.5.2"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
@@ -764,6 +777,15 @@ wheels = [
 ]
 
 [[package]]
+name = "lark"
+version = "1.3.1"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/da/34/28fff3ab31ccff1fd4f6c7c7b0ceb2b6968d8ea4950663eadcb5720591a0/lark-1.3.1.tar.gz", hash = "sha256:b426a7a6d6d53189d318f2b6236ab5d6429eaf09259f1ca33eb716eed10d2905", size = 382732, upload-time = "2025-10-27T18:25:56.653Z" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/82/3d/14ce75ef66813643812f3093ab17e46d3a206942ce7376d31ec2d36229e7/lark-1.3.1-py3-none-any.whl", hash = "sha256:c629b661023a014c37da873b4ff58a817398d12635d3bbb2c5a03be7fe5d1e12", size = 113151, upload-time = "2025-10-27T18:25:54.882Z" },
+]
+
+[[package]]
 name = "lazy-loader"
 version = "0.5"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
@@ -793,6 +815,9 @@ dependencies = [
 [package.optional-dependencies]
 gui = [
     { name = "pyside6-essentials" },
+]
+quest = [
+    { name = "hand-tracking-sdk" },
 ]
 realsense = [
     { name = "pyrealsense2" },
@@ -832,6 +857,7 @@ requires-dist = [
     { name = "chumpy", marker = "extra == 'wilor'", git = "https://github.com/mattloper/chumpy.git" },
     { name = "dill", marker = "extra == 'wilor'", specifier = ">=0.3,<0.4" },
     { name = "einops", marker = "extra == 'wilor'", specifier = ">=0.7,<0.9" },
+    { name = "hand-tracking-sdk", marker = "extra == 'quest'" },
     { name = "mediapipe", specifier = "==0.10.21" },
     { name = "mujoco", marker = "extra == 'tuning'", specifier = ">=3.6" },
     { name = "mujoco", marker = "extra == 'wilor'", specifier = ">=3.6" },
@@ -857,7 +883,7 @@ requires-dist = [
     { name = "ultralytics", marker = "extra == 'wilor'", specifier = "==8.1.34" },
     { name = "yacs", marker = "extra == 'wilor'", specifier = ">=0.1.8" },
 ]
-provides-extras = ["realsense", "zed", "tuning", "gui", "wilor"]
+provides-extras = ["realsense", "zed", "tuning", "gui", "wilor", "quest"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8,<9" }]
