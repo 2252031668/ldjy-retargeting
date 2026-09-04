@@ -107,7 +107,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--transport",
         choices=("udp", "tcp_server", "tcp_client"),
-        default="tcp_server",
+        default="udp",
         help="network transport used by HTSClient; must match the setting in the Quest app",
     )
     parser.add_argument(
