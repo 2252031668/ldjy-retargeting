@@ -142,6 +142,21 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="center the hand at the wrist and drop global wrist position",
     )
     parser.add_argument(
+        "--no-rotate",
+        action="store_true",
+        help="apply wrist translation but skip wrist rotation when mapping landmarks to world",
+    )
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="show raw wrist-relative landmarks without applying wrist 6DoF",
+    )
+    parser.add_argument(
+        "--debug-print",
+        action="store_true",
+        help="print every received frame's wrist pose and landmark[0]",
+    )
+    parser.add_argument(
         "--timeout",
         type=float,
         default=1.0,
@@ -182,7 +197,7 @@ def error_policy_from_arg(value: str) -> ErrorPolicy:
 class HTSReceiver(threading.Thread):
     """Background thread that owns the HTSClient and stores the latest frame."""
 
-    def __init__(self, config: HTSClientConfig) -> None:
+    def __init__(self, config: HTSClientConfig, debug_print: bool = False) -> None:
         super().__init__(name="quest-hts-receiver", daemon=True)
         self._config = config
         self._lock = threading.Lock()
@@ -190,6 +205,7 @@ class HTSReceiver(threading.Thread):
         self._running = threading.Event()
         self._running.set()
         self._stats = {"frames": 0, "errors": 0, "start_time": time.monotonic()}
+        self._debug_print = debug_print
 
     def get_latest(self) -> dict[HandSide, HandFrame]:
         with self._lock:
@@ -216,6 +232,14 @@ class HTSReceiver(threading.Thread):
                     break
                 if not isinstance(event, HandFrame):
                     continue
+                if self._debug_print:
+                    pts = np.asarray(event.landmarks.points, dtype=np.float64)
+                    print(
+                        f"[{event.side.value}] seq={event.sequence_id} "
+                        f"wrist=({event.wrist.x:.3f},{event.wrist.y:.3f},{event.wrist.z:.3f}) "
+                        f"quat=({event.wrist.qw:.3f},{event.wrist.qx:.3f},{event.wrist.qy:.3f},{event.wrist.qz:.3f}) "
+                        f"landmark0=({pts[0,0]:.3f},{pts[0,1]:.3f},{pts[0,2]:.3f})"
+                    )
                 with self._lock:
                     self._latest[event.side] = event
                     self._stats["frames"] += 1
@@ -313,11 +337,12 @@ def _palm_normal(points: np.ndarray) -> np.ndarray:
     return normal / norm
 
 
-def _to_global_landmarks(points: np.ndarray, wrist) -> tuple[np.ndarray, np.ndarray]:
+def _to_global_landmarks(points: np.ndarray, wrist, apply_rotation: bool = True) -> tuple[np.ndarray, np.ndarray]:
     """Map wrist-relative landmarks into the global Quest world frame."""
     wrist_pos = np.array([wrist.x, wrist.y, wrist.z], dtype=np.float64)
     rot = wrist_rotation_matrix(wrist)
-    global_points = (rot @ points.T).T + wrist_pos
+    rotated = (rot @ points.T).T if apply_rotation else points.copy()
+    global_points = rotated + wrist_pos
     return global_points, rot
 
 
@@ -326,6 +351,8 @@ def draw_hand(
     frame: HandFrame,
     convert: bool,
     center: bool,
+    no_rotate: bool,
+    local_only: bool,
     lateral_offset_m: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Draw one HandFrame and return its wrist position and landmark center."""
@@ -334,14 +361,21 @@ def draw_hand(
 
     points = landmarks_to_array(frame.landmarks)
     lateral = np.array([lateral_offset_m, 0.0, 0.0], dtype=np.float64)
+    wrist_pos = np.array([frame.wrist.x, frame.wrist.y, frame.wrist.z], dtype=np.float64)
+    rot = wrist_rotation_matrix(frame.wrist)
 
-    # Quest sends landmarks in the wrist-local frame; apply wrist 6DoF to get
-    # global coordinates so the skeleton follows the hand in space.
-    global_points, rot = _to_global_landmarks(points, frame.wrist)
+    if local_only:
+        # Show raw wrist-relative landmarks for debugging.
+        global_points = points.copy()
+    else:
+        # Quest sends landmarks in the wrist-local frame; apply wrist 6DoF to get
+        # global coordinates so the skeleton follows the hand in space.
+        global_points, rot = _to_global_landmarks(
+            points, frame.wrist, apply_rotation=not no_rotate
+        )
 
     if center:
         # Center on wrist but keep global rotation.
-        wrist_pos = np.array([frame.wrist.x, frame.wrist.y, frame.wrist.z], dtype=np.float64)
         display_points = global_points - wrist_pos + lateral
         wrist_display_pos = lateral
     else:
@@ -405,6 +439,10 @@ def draw_status_label(scene, text: str) -> None:
 def main() -> None:
     args = parse_args()
 
+    if args.local_only and not args.center:
+        print("Warning: --local-only without --center may place the hand far from origin;")
+        print("         camera auto-follow is disabled in this mode.")
+
     config = HTSClientConfig(
         transport_mode=transport_mode_from_arg(args.transport),
         host=args.host,
@@ -415,12 +453,13 @@ def main() -> None:
         error_policy=error_policy_from_arg(args.error_policy),
     )
 
-    receiver = HTSReceiver(config)
+    receiver = HTSReceiver(config, debug_print=args.debug_print)
     receiver.start()
     print(
         f"Quest HTS viewer started: transport={args.transport}, "
         f"host={args.host}, port={args.port}, hand={args.hand}, "
-        f"convert={not args.no_convert}"
+        f"convert={not args.no_convert}, center={args.center}, "
+        f"no_rotate={args.no_rotate}, local_only={args.local_only}"
     )
     print("Waiting for first frame from Quest...")
 
@@ -457,6 +496,8 @@ def main() -> None:
                     frame,
                     convert=not args.no_convert,
                     center=args.center,
+                    no_rotate=args.no_rotate,
+                    local_only=args.local_only,
                     lateral_offset_m=offsets[side],
                 )
                 centers.append(center)
