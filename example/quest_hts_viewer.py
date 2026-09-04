@@ -80,7 +80,7 @@ _USAGE_EPILOG = """\
 Examples:
     uv run --no-sync --extra quest --extra tuning python example/quest_hts_viewer.py
     uv run --no-sync --extra quest --extra tuning python example/quest_hts_viewer.py \\
-        --transport tcp_server --port 8000 --hand right
+        --transport tcp_server --port 9000 --hand right
     uv run --no-sync --extra quest --extra tuning python example/quest_hts_viewer.py \\
         --transport tcp_client --host 192.168.1.100 --port 8000 --hand left
 """
@@ -118,7 +118,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--port",
         type=int,
-        default=8000,
+        default=9000,
         help="bind/connect port",
     )
     parser.add_argument(
