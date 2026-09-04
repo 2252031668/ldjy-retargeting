@@ -108,7 +108,7 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--transport",
         choices=("udp", "tcp_server", "tcp_client"),
         default="tcp_server",
-        help="network transport used by HTSClient",
+        help="network transport used by HTSClient; must match the setting in the Quest app",
     )
     parser.add_argument(
         "--host",
@@ -124,8 +124,8 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--hand",
         choices=("left", "right", "both"),
-        default="right",
-        help="which hand(s) to display",
+        default="both",
+        help="filter and display which hand(s) are received from Quest",
     )
     parser.add_argument(
         "--no-convert",
