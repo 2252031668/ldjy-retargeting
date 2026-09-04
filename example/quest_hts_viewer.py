@@ -142,14 +142,9 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         help="center the hand at the wrist and drop global wrist position",
     )
     parser.add_argument(
-        "--no-rotate",
-        action="store_true",
-        help="apply wrist translation but skip wrist rotation when mapping landmarks to world",
-    )
-    parser.add_argument(
         "--local-only",
         action="store_true",
-        help="show raw wrist-relative landmarks without applying wrist 6DoF",
+        help="show raw landmarks before Unity-to-RFU coordinate conversion",
     )
     parser.add_argument(
         "--debug-print",
@@ -337,13 +332,17 @@ def _palm_normal(points: np.ndarray) -> np.ndarray:
     return normal / norm
 
 
-def _to_global_landmarks(points: np.ndarray, wrist, apply_rotation: bool = True) -> tuple[np.ndarray, np.ndarray]:
-    """Map wrist-relative landmarks into the global Quest world frame."""
+def _to_global_landmarks(points: np.ndarray, wrist) -> tuple[np.ndarray, np.ndarray]:
+    """Map Quest landmarks into the display frame.
+
+    The SDK explicitly states that landmarks and wrist are in the same
+    coordinate space. Therefore we should not apply wrist rotation to the
+    landmark points; we only shift by the optional lateral offset. The wrist
+    6DoF is used only to draw the wrist axes at the reported wrist position.
+    """
     wrist_pos = np.array([wrist.x, wrist.y, wrist.z], dtype=np.float64)
     rot = wrist_rotation_matrix(wrist)
-    rotated = (rot @ points.T).T if apply_rotation else points.copy()
-    global_points = rotated + wrist_pos
-    return global_points, rot
+    return points.copy(), rot
 
 
 def draw_hand(
@@ -362,26 +361,23 @@ def draw_hand(
     points = landmarks_to_array(frame.landmarks)
     lateral = np.array([lateral_offset_m, 0.0, 0.0], dtype=np.float64)
     wrist_pos = np.array([frame.wrist.x, frame.wrist.y, frame.wrist.z], dtype=np.float64)
-    rot = wrist_rotation_matrix(frame.wrist)
 
     if local_only:
-        # Show raw wrist-relative landmarks for debugging.
-        global_points = points.copy()
+        # Show raw landmarks without any coordinate conversion for debugging.
+        display_points = points + lateral
+        wrist_display_pos = points[0] + lateral
+        rot = np.eye(3, dtype=np.float64)
     else:
-        # Quest sends landmarks in the wrist-local frame; apply wrist 6DoF to get
-        # global coordinates so the skeleton follows the hand in space.
-        global_points, rot = _to_global_landmarks(
-            points, frame.wrist, apply_rotation=not no_rotate
-        )
-
-    if center:
-        # Center on wrist but keep global rotation.
-        display_points = global_points - wrist_pos + lateral
-        wrist_display_pos = lateral
-    else:
-        # Preserve absolute Quest world coordinates.
-        display_points = global_points + lateral
-        wrist_display_pos = global_points[0] + lateral
+        # SDK: landmarks and wrist are in the same coordinate space. Do NOT
+        # apply wrist rotation to landmarks; display them directly and only use
+        # wrist 6DoF to draw the wrist axes at the reported wrist position.
+        global_points, rot = _to_global_landmarks(points, frame.wrist)
+        if center:
+            display_points = global_points - wrist_pos + lateral
+            wrist_display_pos = lateral
+        else:
+            display_points = global_points + lateral
+            wrist_display_pos = wrist_pos + lateral
 
     # Draw connection lines first so points sit on top visually.
     for start_idx, end_idx in HAND_CONNECTIONS:
@@ -415,7 +411,7 @@ def draw_hand(
         PALM_NORMAL_RADIUS_M,
     )
 
-    return global_points[0], np.mean(display_points, axis=0)
+    return wrist_pos, np.mean(display_points, axis=0)
 
 
 def draw_status_label(scene, text: str) -> None:
@@ -459,7 +455,7 @@ def main() -> None:
         f"Quest HTS viewer started: transport={args.transport}, "
         f"host={args.host}, port={args.port}, hand={args.hand}, "
         f"convert={not args.no_convert}, center={args.center}, "
-        f"no_rotate={args.no_rotate}, local_only={args.local_only}"
+        f"local_only={args.local_only}"
     )
     print("Waiting for first frame from Quest...")
 
@@ -496,7 +492,6 @@ def main() -> None:
                     frame,
                     convert=not args.no_convert,
                     center=args.center,
-                    no_rotate=args.no_rotate,
                     local_only=args.local_only,
                     lateral_offset_m=offsets[side],
                 )
