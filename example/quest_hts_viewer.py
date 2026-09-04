@@ -1,8 +1,9 @@
 """Quest HTS 3D hand skeleton viewer in MuJoCo.
 
 Displays 21 MediaPipe-style landmarks received from a Meta Quest running the
-Hand Tracking Streamer (HTS) app. The wrist pose is used to center the hand
-in the viewer; the global wrist position is not displayed.
+Hand Tracking Streamer (HTS) app. By default the viewer preserves the global
+wrist pose (position + rotation) so both hands are shown in their real spatial
+relationship. Use ``--center`` to instead center a single hand at the wrist.
 """
 
 from __future__ import annotations
@@ -64,13 +65,16 @@ FINGER_LINK_RGBA = np.array((
     (0.75, 0.25, 1.0, 0.55),
 ), dtype=np.float64)
 
-WRIST_AXIS_LENGTH_M = 0.04
-WRIST_AXIS_RADIUS_M = 0.0012
+WRIST_AXIS_LENGTH_M = 0.08
+WRIST_AXIS_RADIUS_M = 0.0025
 AXIS_RGBA = np.array((
-    (1.0, 0.2, 0.2, 1.0),  # X
-    (0.2, 1.0, 0.2, 1.0),  # Y
-    (0.2, 0.4, 1.0, 1.0),  # Z
+    (1.0, 0.15, 0.15, 1.0),  # X
+    (0.15, 1.0, 0.15, 1.0),  # Y
+    (0.15, 0.35, 1.0, 1.0),  # Z
 ), dtype=np.float64)
+PALM_NORMAL_LENGTH_M = 0.07
+PALM_NORMAL_RADIUS_M = 0.003
+PALM_NORMAL_RGBA = np.array((1.0, 1.0, 0.2, 1.0), dtype=np.float64)  # yellow
 
 POINT_RADIUS_M = 0.003
 LINK_RADIUS_M = 0.0012
@@ -131,6 +135,11 @@ def parse_args(args: list[str] | None = None) -> argparse.Namespace:
         "--no-convert",
         action="store_true",
         help="skip Unity-left to RFU-right coordinate conversion",
+    )
+    parser.add_argument(
+        "--center",
+        action="store_true",
+        help="center the hand at the wrist and drop global wrist position",
     )
     parser.add_argument(
         "--timeout",
@@ -290,13 +299,28 @@ def landmarks_to_array(landmarks) -> np.ndarray:
     return np.asarray(landmarks.points, dtype=np.float64)
 
 
+def _palm_normal(points: np.ndarray) -> np.ndarray:
+    """Estimate palm normal from wrist + index MCP + pinky MCP."""
+    wrist = points[0]
+    index_mcp = points[5]
+    pinky_mcp = points[17]
+    v0 = index_mcp - wrist
+    v1 = pinky_mcp - wrist
+    normal = np.cross(v0, v1)
+    norm = np.linalg.norm(normal)
+    if norm < 1e-12:
+        return np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    return normal / norm
+
+
 def draw_hand(
     scene,
     frame: HandFrame,
     convert: bool,
+    center: bool,
     lateral_offset_m: float = 0.0,
-) -> None:
-    """Draw one HandFrame as a 3D skeleton centered at the wrist."""
+) -> tuple[np.ndarray, np.ndarray]:
+    """Draw one HandFrame and return its wrist position and landmark center."""
     if convert:
         frame = convert_hand_frame_unity_left_to_right(frame)
 
@@ -304,23 +328,28 @@ def draw_hand(
     wrist_pos = np.array([frame.wrist.x, frame.wrist.y, frame.wrist.z], dtype=np.float64)
     lateral = np.array([lateral_offset_m, 0.0, 0.0], dtype=np.float64)
 
-    # Center the hand on the wrist so the viewer stays focused on hand pose.
-    # A lateral offset keeps two-hand mode from overlapping in the view.
-    centered = points - wrist_pos + lateral
+    if center:
+        # Center the hand on the wrist so the viewer stays focused on hand pose.
+        display_points = points - wrist_pos + lateral
+        wrist_display_pos = display_points[0]
+    else:
+        # Show absolute Quest world coordinates.
+        display_points = points + lateral
+        wrist_display_pos = wrist_pos + lateral
 
     # Draw connection lines first so points sit on top visually.
     for start_idx, end_idx in HAND_CONNECTIONS:
         finger = FINGER_INDEX_FOR_LANDMARK[start_idx]
         _add_capsule(
             scene,
-            centered[start_idx],
-            centered[end_idx],
+            display_points[start_idx],
+            display_points[end_idx],
             FINGER_LINK_RGBA[finger],
             LINK_RADIUS_M,
         )
 
     # Draw joint spheres.
-    for idx, pos in enumerate(centered):
+    for idx, pos in enumerate(display_points):
         finger = FINGER_INDEX_FOR_LANDMARK[idx]
         label = ""
         if idx == 0:
@@ -329,7 +358,19 @@ def draw_hand(
 
     # Draw wrist coordinate axes using the wrist rotation.
     rot = wrist_rotation_matrix(frame.wrist)
-    _add_axis(scene, centered[0], rot, WRIST_AXIS_LENGTH_M, WRIST_AXIS_RADIUS_M)
+    _add_axis(scene, wrist_display_pos, rot, WRIST_AXIS_LENGTH_M, WRIST_AXIS_RADIUS_M)
+
+    # Draw palm normal arrow to make hand rotation obvious.
+    normal = rot @ _palm_normal(display_points)
+    _add_capsule(
+        scene,
+        wrist_display_pos,
+        wrist_display_pos + normal * PALM_NORMAL_LENGTH_M,
+        PALM_NORMAL_RGBA,
+        PALM_NORMAL_RADIUS_M,
+    )
+
+    return wrist_pos, np.mean(display_points, axis=0)
 
 
 def draw_status_label(scene, text: str) -> None:
@@ -389,6 +430,7 @@ def main() -> None:
             viewer.user_scn.ngeom = 0
 
             displayed = 0
+            centers = []
             offsets = {
                 HandSide.LEFT: -0.12,
                 HandSide.RIGHT: 0.12,
@@ -399,13 +441,21 @@ def main() -> None:
                     continue
                 if args.hand in ("left", "right") and side.value.lower() != args.hand:
                     continue
-                draw_hand(
+                _, center = draw_hand(
                     viewer.user_scn,
                     frame,
                     convert=not args.no_convert,
+                    center=args.center,
                     lateral_offset_m=offsets[side],
                 )
+                centers.append(center)
                 displayed += 1
+
+            if centers and not args.center:
+                # Smoothly pan the camera lookat toward the averaged hand center.
+                target = np.mean(centers, axis=0)
+                alpha = 0.1
+                viewer.cam.lookat[:] = viewer.cam.lookat + alpha * (target - viewer.cam.lookat)
 
             if displayed == 0:
                 draw_status_label(viewer.user_scn, "waiting for Quest HTS data...")
