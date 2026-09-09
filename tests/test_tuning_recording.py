@@ -94,3 +94,28 @@ class TuningRecordingTests(unittest.TestCase):
             self.assertTrue(record.detected[0])
             self.assertEqual(record.arrays["vertices_mano"].shape, (1, 778, 3))
             np.testing.assert_allclose(record.arrays["joints_mano"][0], 1.0)
+
+    def test_quest_writer_round_trips_landmarks_without_video(self):
+        from ldjy_retargeting.tuning.recording import (
+            QuestHTSRecordSample,
+            QuestHTSRecordWriter,
+            load_quest_hts_record,
+        )
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            writer = QuestHTSRecordWriter.start(temporary_directory, hand_side="left")
+            writer.append(QuestHTSRecordSample(
+                timestamp_sec=0.2,
+                detected=True,
+                landmarks_unity_left=np.full((21, 3), 1.0, dtype=np.float32),
+                landmarks_rfu=np.full((21, 3), 2.0, dtype=np.float32),
+                wrist_position_unity_left=np.array((3.0, 4.0, 5.0), dtype=np.float32),
+                wrist_quaternion_unity_left=np.array((0.0, 0.0, 0.0, 1.0), dtype=np.float32),
+            ))
+            info = writer.finish(config={})
+            record = load_quest_hts_record(info.path)
+
+            self.assertFalse((info.path / "video.mp4").exists())
+            self.assertTrue(record.detected[0])
+            np.testing.assert_allclose(record.landmarks_rfu[0], 2.0)
+            np.testing.assert_allclose(record.wrist_position_unity_left[0], (3.0, 4.0, 5.0))

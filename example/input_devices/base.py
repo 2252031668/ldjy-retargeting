@@ -11,7 +11,7 @@ class InferenceSample:
     """One completed live inference paired with its source camera frame."""
 
     timestamp_sec: float
-    frame_bgr: np.ndarray
+    frame_bgr: np.ndarray | None
     input_type: str
     hand_side: str
     detected: bool

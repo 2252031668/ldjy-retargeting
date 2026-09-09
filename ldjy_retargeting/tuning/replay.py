@@ -9,7 +9,14 @@ import sys
 import cv2
 import numpy as np
 
-from .recording import MediaPipeRecord, WiLoRRecord, load_mediapipe_record, load_wilor_record
+from .recording import (
+    MediaPipeRecord,
+    QuestHTSRecord,
+    WiLoRRecord,
+    load_mediapipe_record,
+    load_quest_hts_record,
+    load_wilor_record,
+)
 
 
 _HAND_CONNECTIONS = (
@@ -173,4 +180,33 @@ class WiLoRReplay(_RecordReplay):
         }
 
 
-__all__ = ["MediaPipeReplay", "ReplayCursor", "WiLoRReplay"]
+class QuestHTSReplay:
+    """Replay saved Quest RFU landmarks without an HTS client or video."""
+
+    def __init__(self, record: str | Path | QuestHTSRecord) -> None:
+        self.record = load_quest_hts_record(record) if not isinstance(record, QuestHTSRecord) else record
+        self.path = self.record.info.path
+        self.cursor = ReplayCursor(self.record.timestamp_sec)
+
+    @property
+    def current_index(self) -> int:
+        return self.cursor.index
+
+    @property
+    def hand_side(self) -> str:
+        return self.record.info.hand_side
+
+    def input_at(self, index: int) -> np.ndarray | None:
+        index = int(np.clip(index, 0, self.record.frame_count - 1))
+        valid = np.flatnonzero(self.record.detected[: index + 1])
+        return None if not len(valid) else self.record.landmarks_rfu[valid[-1]].copy()
+
+    def preview_at(self, index: int) -> None:
+        del index
+        return None
+
+    def close(self) -> None:
+        pass
+
+
+__all__ = ["MediaPipeReplay", "QuestHTSReplay", "ReplayCursor", "WiLoRReplay"]

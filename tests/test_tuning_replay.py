@@ -67,3 +67,20 @@ class TuningReplayTests(unittest.TestCase):
             np.testing.assert_allclose(replay.input_at(0), 1.0)
             self.assertEqual(replay.mano_overlay_at(0)["vertices_mano"].shape, (778, 3))
             replay.close()
+
+    def test_quest_replay_returns_saved_rfu_landmarks_without_preview(self):
+        from ldjy_retargeting.tuning.recording import QuestHTSRecordSample, QuestHTSRecordWriter
+        from ldjy_retargeting.tuning.replay import QuestHTSReplay
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            writer = QuestHTSRecordWriter.start(temporary_directory, hand_side="right")
+            writer.append(QuestHTSRecordSample(
+                0.0, True,
+                np.ones((21, 3), dtype=np.float32),
+                np.full((21, 3), 7.0, dtype=np.float32),
+                np.zeros(3, dtype=np.float32), np.array((0, 0, 0, 1), dtype=np.float32),
+            ))
+            replay = QuestHTSReplay(writer.finish(config={}).path)
+            np.testing.assert_allclose(replay.input_at(0), 7.0)
+            self.assertIsNone(replay.preview_at(0))
+            replay.close()

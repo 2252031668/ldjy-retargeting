@@ -15,7 +15,11 @@ import yaml
 
 
 SCHEMA = "ldjy-retargeting.tuning-record.v1"
-INPUT_DIRECTORY = {"webcam": "mediapipe", "webcam_wilor": "wilor"}
+INPUT_DIRECTORY = {
+    "webcam": "mediapipe",
+    "webcam_wilor": "wilor",
+    "quest_hts": "quest_hts",
+}
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,33 @@ class WiLoRRecord:
         return int(self.timestamp_sec.shape[0])
 
 
+@dataclass(frozen=True)
+class QuestHTSRecordSample:
+    """One selected-hand Quest HTS frame, kept in both source and task coordinates."""
+
+    timestamp_sec: float
+    detected: bool
+    landmarks_unity_left: np.ndarray
+    landmarks_rfu: np.ndarray
+    wrist_position_unity_left: np.ndarray
+    wrist_quaternion_unity_left: np.ndarray
+
+
+@dataclass(frozen=True)
+class QuestHTSRecord:
+    info: RecordInfo
+    timestamp_sec: np.ndarray
+    detected: np.ndarray
+    landmarks_unity_left: np.ndarray
+    landmarks_rfu: np.ndarray
+    wrist_position_unity_left: np.ndarray
+    wrist_quaternion_unity_left: np.ndarray
+
+    @property
+    def frame_count(self) -> int:
+        return int(self.timestamp_sec.shape[0])
+
+
 def _timestamp_name() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -90,13 +121,16 @@ def _metadata(path: Path) -> dict[str, Any]:
 def _validate_info(path: Path, input_type: str) -> RecordInfo | None:
     try:
         metadata = _metadata(path)
-        required = {"schema", "input_type", "hand_side", "frame_count", "width", "height"}
+        required = {"schema", "input_type", "hand_side", "frame_count"}
+        if input_type != "quest_hts":
+            required |= {"width", "height"}
         if not required <= metadata.keys() or metadata["schema"] != SCHEMA:
             return None
         if metadata["input_type"] != input_type or metadata["hand_side"] not in {"left", "right"}:
             return None
         result_name = "frames.npz" if input_type == "webcam" else "result.npz"
-        if not (path / "video.mp4").is_file() or not (path / result_name).is_file():
+        needs_video = input_type != "quest_hts"
+        if (needs_video and not (path / "video.mp4").is_file()) or not (path / result_name).is_file():
             return None
         if not (path / "config_snapshot.yaml").is_file():
             return None
@@ -379,8 +413,109 @@ def load_wilor_record(path: str | Path) -> WiLoRRecord:
     return WiLoRRecord(info, timestamp_sec, detected, faces, arrays, int(metadata["width"]), int(metadata["height"]))
 
 
+class QuestHTSRecordWriter:
+    """Write Quest hand-tracking frames without a meaningless camera video."""
+
+    _FIELDS = {
+        "landmarks_unity_left": (21, 3),
+        "landmarks_rfu": (21, 3),
+        "wrist_position_unity_left": (3,),
+        "wrist_quaternion_unity_left": (4,),
+    }
+
+    def __init__(self, root: Path, hand_side: str) -> None:
+        if hand_side not in {"left", "right"}:
+            raise ValueError("hand_side must be left or right")
+        self.hand_side = hand_side
+        base = root / INPUT_DIRECTORY["quest_hts"]
+        base.mkdir(parents=True, exist_ok=True)
+        name, suffix = _timestamp_name(), 0
+        while True:
+            display_name = name if suffix == 0 else f"{name}_{suffix:02d}"
+            temporary, final = base / f".{display_name}.tmp", base / display_name
+            if not temporary.exists() and not final.exists():
+                break
+            suffix += 1
+        self._temporary_path, self._final_path = temporary, final
+        temporary.mkdir()
+        self._timestamps: list[float] = []
+        self._first_timestamp: float | None = None
+        self._detected: list[bool] = []
+        self._arrays = {name: [] for name in self._FIELDS}
+        self._closed = False
+
+    @classmethod
+    def start(cls, root: str | Path, *, hand_side: str) -> "QuestHTSRecordWriter":
+        return cls(Path(root), hand_side)
+
+    def append(self, sample: QuestHTSRecordSample) -> None:
+        if self._closed:
+            raise RuntimeError("record writer is already closed")
+        values: dict[str, np.ndarray] = {}
+        if sample.detected:
+            for name, shape in self._FIELDS.items():
+                value = np.asarray(getattr(sample, name), dtype=np.float32)
+                if value.shape != shape or not np.isfinite(value).all():
+                    raise ValueError(f"Quest HTS {name} must have finite shape {shape}")
+                values[name] = value
+        if self._first_timestamp is None:
+            self._first_timestamp = float(sample.timestamp_sec)
+        self._timestamps.append(float(sample.timestamp_sec) - self._first_timestamp)
+        self._detected.append(bool(sample.detected))
+        for name, shape in self._FIELDS.items():
+            self._arrays[name].append(values.get(name, np.full(shape, np.nan, dtype=np.float32)).copy())
+
+    def finish(self, *, config: dict[str, Any]) -> RecordInfo:
+        if self._closed:
+            raise RuntimeError("record writer is already closed")
+        self._closed = True
+        count = len(self._timestamps)
+        np.savez_compressed(
+            self._temporary_path / "result.npz",
+            timestamp_sec=np.asarray(self._timestamps, dtype=np.float64),
+            detected=np.asarray(self._detected, dtype=bool),
+            **{name: np.asarray(values, dtype=np.float32).reshape((count,) + self._FIELDS[name])
+               for name, values in self._arrays.items()},
+        )
+        metadata = {
+            "schema": SCHEMA, "input_type": "quest_hts", "hand_side": self.hand_side,
+            "frame_count": count,
+            "timestamps_are_actual_inference_completion": True,
+            "coordinate_system": "unity_left_wrist_local_and_rfu_wrist_local",
+        }
+        (self._temporary_path / "metadata.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        (self._temporary_path / "config_snapshot.yaml").write_text(
+            yaml.safe_dump(config, allow_unicode=True, sort_keys=False), encoding="utf-8"
+        )
+        os.replace(self._temporary_path, self._final_path)
+        return RecordInfo(self._final_path, "quest_hts", self.hand_side, count)
+
+    def abort(self) -> None:
+        self._closed = True
+
+
+def load_quest_hts_record(path: str | Path) -> QuestHTSRecord:
+    path = Path(path).resolve()
+    info = _validate_info(path, "quest_hts")
+    if info is None:
+        raise ValueError(f"not a complete Quest HTS tuning record: {path}")
+    with np.load(path / "result.npz") as archive:
+        timestamp_sec = np.asarray(archive["timestamp_sec"], dtype=np.float64)
+        detected = np.asarray(archive["detected"], dtype=bool)
+        arrays = {name: np.asarray(archive[name], dtype=np.float32) for name in QuestHTSRecordWriter._FIELDS}
+    if timestamp_sec.shape != (info.frame_count,) or detected.shape != (info.frame_count,):
+        raise ValueError("Quest HTS record timestamp/detected shape is invalid")
+    for name, shape in QuestHTSRecordWriter._FIELDS.items():
+        if arrays[name].shape != (info.frame_count,) + shape:
+            raise ValueError(f"Quest HTS record {name} shape is invalid")
+    return QuestHTSRecord(info, timestamp_sec, detected, **arrays)
+
+
 __all__ = [
     "MediaPipeRecord", "MediaPipeRecordWriter", "RecordInfo", "RecordSample",
+    "QuestHTSRecord", "QuestHTSRecordSample", "QuestHTSRecordWriter",
     "WiLoRRecord", "WiLoRRecordSample", "WiLoRRecordWriter", "list_records",
-    "load_mediapipe_record", "load_wilor_record",
+    "load_mediapipe_record", "load_quest_hts_record", "load_wilor_record",
 ]

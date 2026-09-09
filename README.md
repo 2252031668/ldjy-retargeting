@@ -23,9 +23,9 @@ uv sync --extra gui --extra tuning
 uv run --no-sync python example/tuning_gui.py
 ```
 
-在窗口顶部选择算法、`Webcam MediaPipe` 或 `Webcam WiLoR`、USB 相机和手侧，然后点击“应用输入”。
+在窗口顶部选择算法、`Webcam MediaPipe`、`Webcam WiLoR` 或 `Quest HTS`，再点击“应用输入”。
 命令行
-`--webcam`、`--webcam-wilor`、`--camera-index` 和 `--hand` 仅保留为初始选择兼容参数，不再是日常启动所需。
+`--webcam`、`--webcam-wilor`、`--quest-hts`、`--camera-index`、`--quest-transport`、`--quest-host`、`--quest-port` 和 `--hand` 仅保留为初始选择兼容参数，不再是日常启动所需。
 例如旧脚本可继续使用 `python example/tuning_gui.py --webcam --camera-index 0 --hand right`，但推荐直接启动 GUI。
 
 GUI 相机预览按检测帧更新；独立 MuJoCo debug 窗口按 120 Hz 刷新，直接显示当前重定向
@@ -42,6 +42,33 @@ uv run --no-sync python example/teleop_sim.py --play example/data/avp1.pkl --han
 
 安装 `wilor` extra 后，可以直接以 WiLoR `fast` 模式从 USB 摄像头重定向。该模式使用 CUDA、FP16 与
 backbone block skipping；模型在后台线程推理，MuJoCo 控制线程始终读取最近完成的一帧，不会等待模型。
+
+WiLoR 源码位于 Git 子模块 `third_party/WiLoR`。首次克隆仓库时使用：
+
+```bash
+git clone --recurse-submodules https://github.com/2252031668/ldjy-retargeting.git
+cd ldjy-retargeting
+```
+
+已经克隆但缺少子模块时运行：
+
+```bash
+git submodule update --init --recursive
+```
+
+`uv sync --extra wilor` 只安装 Python/CUDA 依赖，**不会自动下载模型权重**。首次使用 WiLoR 前还需要：
+
+```bash
+uv sync --extra wilor
+wget https://huggingface.co/spaces/rolpotamias/WiLoR/resolve/main/pretrained_models/detector.pt \
+  -P third_party/WiLoR/pretrained_models/
+wget https://huggingface.co/spaces/rolpotamias/WiLoR/resolve/main/pretrained_models/wilor_final.ckpt \
+  -P third_party/WiLoR/pretrained_models/
+```
+
+此外，WiLoR 需要受 [MANO 许可证](https://mano.is.tue.mpg.de/license.html) 约束的模型；请在
+[MANO 官网](https://mano.is.tue.mpg.de) 注册并下载 `mano_v*_*.zip`，将其中的右手模型放到
+`third_party/WiLoR/mano_data/MANO_RIGHT.pkl`。该文件不能由本仓库自动下载或提交。上述权重和 MANO 文件均为本机未跟踪文件，不会随主仓库或子模块 push。
 
 ```bash
 uv run --extra wilor python example/teleop_sim.py \
@@ -187,6 +214,33 @@ uv sync --extra gui --extra tuning --extra wilor
 uv run --no-sync python example/tuning_gui.py
 ```
 
+### Quest HTS 实时输入
+
+Quest 运行 Hand Tracking Streamer (HTS) 时，安装 `quest` extra 后可在 GUI 顶部选择
+`Quest HTS` 与 `Adaptive Analytical (Quest HTS 21 点)`。默认以 UDP 监听
+`0.0.0.0:9000`；可在选择该输入源后调整 UDP / TCP Server / TCP Client、主机和端口，再点击“应用输入”重连：
+
+```bash
+uv sync --extra gui --extra tuning --extra quest
+uv run --no-sync python example/tuning_gui.py --quest-hts
+```
+
+UDP 时，`0.0.0.0` 表示电脑监听所有本机网卡，不是 Quest 的目标地址。HTS App 的默认
+`255.255.255.255:9000` 是广播；网络稳定性不足时，建议改成电脑同一局域网的 IPv4 地址和端口 `9000`，GUI 仍保持 UDP、`0.0.0.0:9000`。
+
+HTS 也支持最稳定的 USB 有线 TCP：以数据 USB-C 线连接 Quest，头显允许 USB 调试/连接后执行：
+
+```bash
+adb devices
+adb reverse tcp:8000 tcp:8000
+adb reverse --list
+```
+
+然后在 HTS App 选择 TCP Wired（默认 `localhost:8000`）；GUI 选择 `TCP Server`，主机填
+`127.0.0.1`，端口填 `8000`。这是通过 ADB reverse 在 USB 内转发 TCP，不需要填写 Quest 或电脑的局域网 IP；`TCP Client` 不用于此有线模式。
+
+Quest landmarks 保持 wrist 局部坐标，只转换 Unity-left 到重定向所用的 RFU 坐标，不应用 wrist 的全局 6DoF 位姿；因此它不使用或显示 `video_input` 的尺度、深度和骨段修正参数。Quest 没有相机预览，左侧状态区只显示连接与接收 FPS。短暂丢帧或断连时保持最后有效姿态；第一版不会自动重连，修改设置后点击“应用输入”即可重新建立连接。
+
 选择 `MANO 指腹捏合 IK (WiLoR)` 可启用第一版指腹模式。它直接使用 WiLoR 的绝对局部
 `hand_pose`，但始终使用 `mano_ldjy_reference.yaml` 中固定的机器人 `betas`；不减去
 `hand_pose_ref`，也不使用 WiLoR 的 `global_orient` 和 `translation` 移动机器人 wrist。
@@ -211,10 +265,9 @@ uv run --no-sync \
   python example/tuning_gui.py --config config/adaptive_analytical_video.yaml
 ```
 
-首版 GUI 支持 USB 实时输入与自身的静态调参记录回放。实时模式的“开始记录”会保存每个完成推理对应的一帧
-视频与结果到 `outputs/tuning_records/{mediapipe,wilor}/<日期时间>/`；进入顶部的“静态调参记录”模式后可选择
-同类记录。回放锁定录制手侧，不再运行检测模型；MediaPipe 会按当前 `video_input` 参数重新预处理原始点，
-WiLoR 直接读取保存的 MANO 数据。底层仍依赖 `InputDeviceBase` 的标准 `(21, 3)` 接口。
+首版 GUI 支持实时输入与自身的静态调参记录回放。MediaPipe/WiLoR 会把每个完成推理的相机视频和结果保存到
+`outputs/tuning_records/{mediapipe,wilor}/<日期时间>/`。Quest 则保存纯数据到
+`outputs/tuning_records/quest_hts/<日期时间>/`：原始 Unity-left landmarks、RFU landmarks、wrist position 与 quaternion；不创建黑色视频。进入顶部的“静态调参记录”模式后可选择同类记录。回放锁定录制手侧，不再运行检测模型；MediaPipe 会按当前 `video_input` 参数重新预处理原始点，WiLoR 与 Quest 直接读取保存结果。底层仍依赖 `InputDeviceBase` 的标准 `(21, 3)` 接口。
 
 ### 当前 YAML 与默认 YAML
 

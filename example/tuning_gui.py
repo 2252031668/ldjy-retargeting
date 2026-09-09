@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 DEBUG_CONTROL_HZ = 120
-INPUT_DEVICE_TYPES = ("webcam", "webcam_wilor")
+INPUT_DEVICE_TYPES = ("webcam", "webcam_wilor", "quest_hts")
 MEDIAPIPE_ONLY_PARAMETER_PREFIX = "video_input."
 TUNING_RECORDS_ROOT = PROJECT_ROOT / "outputs" / "tuning_records"
 
@@ -39,6 +39,9 @@ class RuntimeContext:
     input_device_type: str
     camera_index: int
     hand_side: str
+    quest_transport: str = "udp"
+    quest_host: str = "0.0.0.0"
+    quest_port: int = 9000
     record_path: Path | None = None
 
     @property
@@ -51,7 +54,10 @@ class RuntimeContext:
 
     @classmethod
     def for_record(cls, record_info: Any) -> "RuntimeContext":
-        return cls(RunMode.REPLAY, record_info.input_type, 0, record_info.hand_side, record_info.path)
+        return cls(
+            RunMode.REPLAY, record_info.input_type, 0, record_info.hand_side,
+            record_path=record_info.path,
+        )
 
 
 @dataclass(frozen=True)
@@ -79,6 +85,10 @@ def algorithm_choices() -> tuple[AlgorithmChoice, ...]:
             "adaptive_analytical_wilor.yaml", ("webcam_wilor",),
         ),
         AlgorithmChoice(
+            "adaptive_quest_hts", "Adaptive Analytical (Quest HTS 21 点)",
+            "adaptive_analytical_quest_hts.yaml", ("quest_hts",),
+        ),
+        AlgorithmChoice(
             "mano_pad_pose_wilor", "MANO 指腹捏合 IK (WiLoR)",
             "mano_pad_pose_wilor.yaml", ("webcam_wilor",),
         ),
@@ -98,7 +108,10 @@ def algorithm_key_for_config(config_path: Path, input_device_type: str) -> str:
     for choice in algorithm_choices():
         if name == choice.config_name:
             return choice.key
-    return "adaptive_wilor" if input_device_type == "webcam_wilor" else "adaptive_mediapipe"
+    return {
+        "webcam_wilor": "adaptive_wilor",
+        "quest_hts": "adaptive_quest_hts",
+    }.get(input_device_type, "adaptive_mediapipe")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -106,15 +119,21 @@ def build_parser() -> argparse.ArgumentParser:
         description="LDJY 实时重定向调参 GUI",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("--config", default="config/adaptive_analytical_video.yaml",
+    parser.add_argument("--config",
                         help="调参 YAML，相对路径以 example 目录为基准")
     input_group = parser.add_mutually_exclusive_group(required=False)
     input_group.add_argument("--webcam", action="store_true",
                              help="使用 USB 摄像头和 MediaPipe 输入")
     input_group.add_argument("--webcam-wilor", action="store_true",
                              help="使用 USB 摄像头和 WiLoR MANO 输入（需要 --extra wilor）")
+    input_group.add_argument("--quest-hts", action="store_true",
+                             help="使用 Quest Hand Tracking Streamer 输入（需要 --extra quest）")
     parser.add_argument("--camera-index", type=int, default=0,
                         help="OpenCV USB 摄像头索引")
+    parser.add_argument("--quest-transport", choices=("udp", "tcp_server", "tcp_client"), default="udp",
+                        help="Quest HTS 传输模式")
+    parser.add_argument("--quest-host", default="0.0.0.0", help="Quest HTS 主机地址")
+    parser.add_argument("--quest-port", type=int, default=9000, help="Quest HTS 端口")
     parser.add_argument("--hand", choices=("left", "right"), default="right",
                         help="要重定向的手侧")
     return parser
@@ -126,7 +145,18 @@ def input_device_type_from_args(args: argparse.Namespace) -> str:
         return "webcam"
     if args.webcam_wilor:
         return "webcam_wilor"
+    if args.quest_hts:
+        return "quest_hts"
     return "webcam"
+
+
+def initial_config_path(args: argparse.Namespace) -> Path:
+    """Choose the input's canonical YAML unless the caller explicitly provided one."""
+    if args.config:
+        return _resolve_config_path(args.config).resolve()
+    return EXAMPLE_DIR / "config" / algorithm_choice(
+        algorithm_key_for_config(Path(), input_device_type_from_args(args))
+    ).config_name
 
 
 def parameter_specs_for_input(input_device_type: str):
@@ -136,7 +166,7 @@ def parameter_specs_for_input(input_device_type: str):
     from ldjy_retargeting.tuning.parameters import parameter_specs
 
     specs = parameter_specs()
-    if input_device_type == "webcam_wilor":
+    if input_device_type in {"webcam_wilor", "quest_hts"}:
         return tuple(
             spec for spec in specs
             if not spec.path.startswith(MEDIAPIPE_ONLY_PARAMETER_PREFIX)
@@ -356,9 +386,10 @@ def _run_gui(args: argparse.Namespace) -> int:
     )
     from ldjy_retargeting.retarget_tip_frames import DEFAULT_OFFSET_FILE
 
-    config_path = _resolve_config_path(args.config).resolve()
+    config_path = initial_config_path(args)
     initial_context = RuntimeContext(
-        RunMode.LIVE, input_device_type_from_args(args), args.camera_index, args.hand
+        RunMode.LIVE, input_device_type_from_args(args), args.camera_index, args.hand,
+        args.quest_transport, args.quest_host, args.quest_port,
     )
     initial_algorithm_key = algorithm_key_for_config(config_path, initial_context.input_device_type)
 
@@ -408,6 +439,19 @@ def _run_gui(args: argparse.Namespace) -> int:
                     video_config=config.get("video_input", {}),
                     show_video=False,
                 )
+            if context.input_device_type == "quest_hts":
+                try:
+                    from input_devices.quest_hts import QuestHTS
+                    return QuestHTS(
+                        hand_side=context.hand_side,
+                        transport=context.quest_transport,
+                        host=context.quest_host,
+                        port=context.quest_port,
+                    )
+                except ImportError as exc:
+                    raise RuntimeError(
+                        "Quest HTS 输入需要额外依赖。请执行: uv sync --extra quest"
+                    ) from exc
             try:
                 from input_devices.webcam_wilor import WebcamWiLoR
 
@@ -564,6 +608,7 @@ def _run_gui(args: argparse.Namespace) -> int:
             self.input_combo = QtWidgets.QComboBox()
             self.input_combo.addItem("Webcam MediaPipe", "webcam")
             self.input_combo.addItem("Webcam WiLoR", "webcam_wilor")
+            self.input_combo.addItem("Quest HTS", "quest_hts")
             self.input_combo.setCurrentIndex(
                 self.input_combo.findData(self.context.input_device_type)
             )
@@ -575,6 +620,26 @@ def _run_gui(args: argparse.Namespace) -> int:
             self.camera_spin.setRange(0, 99)
             self.camera_spin.setValue(self.context.camera_index)
             form.addWidget(self.camera_spin)
+            self.quest_transport_caption = QtWidgets.QLabel("Quest 传输")
+            form.addWidget(self.quest_transport_caption)
+            self.quest_transport_combo = QtWidgets.QComboBox()
+            self.quest_transport_combo.addItem("UDP", "udp")
+            self.quest_transport_combo.addItem("TCP Server", "tcp_server")
+            self.quest_transport_combo.addItem("TCP Client", "tcp_client")
+            self.quest_transport_combo.setCurrentIndex(
+                self.quest_transport_combo.findData(self.context.quest_transport)
+            )
+            form.addWidget(self.quest_transport_combo)
+            self.quest_host_caption = QtWidgets.QLabel("Quest 主机")
+            form.addWidget(self.quest_host_caption)
+            self.quest_host_edit = QtWidgets.QLineEdit(self.context.quest_host)
+            form.addWidget(self.quest_host_edit)
+            self.quest_port_caption = QtWidgets.QLabel("Quest 端口")
+            form.addWidget(self.quest_port_caption)
+            self.quest_port_spin = QtWidgets.QSpinBox()
+            self.quest_port_spin.setRange(1, 65535)
+            self.quest_port_spin.setValue(self.context.quest_port)
+            form.addWidget(self.quest_port_spin)
             self.record_caption = QtWidgets.QLabel("记录")
             self.record_combo = QtWidgets.QComboBox()
             self.record_combo.setMinimumWidth(180)
@@ -602,8 +667,15 @@ def _run_gui(args: argparse.Namespace) -> int:
         def _context_controls_changed(self) -> None:
             self._update_algorithm_availability()
             replay = self.mode_combo.currentData() == RunMode.REPLAY.value
-            self.camera_caption.setVisible(not replay)
-            self.camera_spin.setVisible(not replay)
+            quest = self.input_combo.currentData() == "quest_hts"
+            self.camera_caption.setVisible(not replay and not quest)
+            self.camera_spin.setVisible(not replay and not quest)
+            for widget in (
+                self.quest_transport_caption, self.quest_transport_combo,
+                self.quest_host_caption, self.quest_host_edit,
+                self.quest_port_caption, self.quest_port_spin,
+            ):
+                widget.setVisible(not replay and quest)
             self.record_caption.setVisible(replay)
             self.record_combo.setVisible(replay)
             self.hand_caption.setVisible(not replay)
@@ -656,6 +728,7 @@ def _run_gui(args: argparse.Namespace) -> int:
         def _set_busy(self, busy: bool, text: str) -> None:
             for widget in (
                 self.algorithm_combo, self.mode_combo, self.input_combo, self.camera_spin,
+                self.quest_transport_combo, self.quest_host_edit, self.quest_port_spin,
                 self.hand_combo, self.record_combo, self.apply_input_button,
             ):
                 widget.setEnabled(not busy)
@@ -671,7 +744,9 @@ def _run_gui(args: argparse.Namespace) -> int:
                     raise ValueError("当前类型没有可回放的完整记录")
                 return RuntimeContext.for_record(record)
             return RuntimeContext(
-                RunMode.LIVE, input_type, self.camera_spin.value(), self.hand_combo.currentData()
+                RunMode.LIVE, input_type, self.camera_spin.value(), self.hand_combo.currentData(),
+                self.quest_transport_combo.currentData(), self.quest_host_edit.text().strip(),
+                self.quest_port_spin.value(),
             )
 
         def _apply_selected_context(self) -> None:
@@ -684,6 +759,12 @@ def _run_gui(args: argparse.Namespace) -> int:
                 self.context_status.setText(str(exc))
                 return
             self._set_busy(True, "正在加载输入...")
+            # Quest owns its UDP/TCP listening port. Release an active Quest
+            # receiver before validating its replacement so "应用输入" can
+            # reconnect on the same address after a settings change.
+            if self.context.mode is RunMode.LIVE and self.input_device_type == "quest_hts":
+                self._stop_recording(finish=True)
+                self._cleanup_active_session()
             try:
                 candidate_session = self._session_for_algorithm(choice)
                 if context.mode is RunMode.LIVE:
@@ -692,9 +773,12 @@ def _run_gui(args: argparse.Namespace) -> int:
                 elif context.input_device_type == "webcam":
                     from ldjy_retargeting.tuning.replay import MediaPipeReplay
                     candidate_device, candidate_replay = None, MediaPipeReplay(context.record_path)
-                else:
+                elif context.input_device_type == "webcam_wilor":
                     from ldjy_retargeting.tuning.replay import WiLoRReplay
                     candidate_device, candidate_replay = None, WiLoRReplay(context.record_path)
+                else:
+                    from ldjy_retargeting.tuning.replay import QuestHTSReplay
+                    candidate_device, candidate_replay = None, QuestHTSReplay(context.record_path)
                 candidate_runtime = TuningRuntime(
                     candidate_session.config,
                     context.hand_side,
@@ -732,6 +816,12 @@ def _run_gui(args: argparse.Namespace) -> int:
             self.run_toggle.setEnabled(True)
             self.run_toggle.setText("暂停")
             self._set_replay_controls_visible(context.mode is RunMode.REPLAY)
+            if self.input_device_type == "quest_hts":
+                self.preview_title.setText("Quest HTS（无视频预览）")
+                self.preview_label.setText("等待 Quest HTS 手部追踪数据...")
+                self.preview_label.setPixmap(QtGui.QPixmap())
+            else:
+                self.preview_title.setText("OpenCV / MediaPipe 检测画面")
             if context.mode is RunMode.REPLAY:
                 self._sync_replay_controls()
             self._rebuild_parameter_controls()
@@ -1009,26 +1099,35 @@ def _run_gui(args: argparse.Namespace) -> int:
             self.status_label.setText("正在等待下一次完整推理后开始记录...")
 
         def _start_writer_for_sample(self, sample) -> None:
-            from ldjy_retargeting.tuning.recording import MediaPipeRecordWriter, WiLoRRecordWriter
+            from ldjy_retargeting.tuning.recording import (
+                MediaPipeRecordWriter, QuestHTSRecordWriter, WiLoRRecordWriter,
+            )
 
-            height, width = sample.frame_bgr.shape[:2]
             if sample.input_type == "webcam":
+                height, width = sample.frame_bgr.shape[:2]
                 self._record_writer = MediaPipeRecordWriter.start(
                     TUNING_RECORDS_ROOT, hand_side=self.context.hand_side, width=width, height=height
                 )
-            else:
+            elif sample.input_type == "webcam_wilor":
+                height, width = sample.frame_bgr.shape[:2]
                 faces = getattr(self.device, "_mano_faces", None)
                 if faces is None:
                     raise RuntimeError("WiLoR MANO faces 尚未就绪，无法创建记录")
                 self._record_writer = WiLoRRecordWriter.start(
                     TUNING_RECORDS_ROOT, hand_side=self.context.hand_side, width=width, height=height, faces=faces
                 )
+            else:
+                self._record_writer = QuestHTSRecordWriter.start(
+                    TUNING_RECORDS_ROOT, hand_side=self.context.hand_side,
+                )
             self.status_label.setText(f"正在记录: {self._record_writer._final_path.name}")
 
         def _drain_record_samples(self) -> None:
             if not self._recording_requested or self.device is None:
                 return
-            from ldjy_retargeting.tuning.recording import RecordSample, WiLoRRecordSample
+            from ldjy_retargeting.tuning.recording import (
+                QuestHTSRecordSample, RecordSample, WiLoRRecordSample,
+            )
 
             for sample in self.device.drain_inference_samples():
                 if self._record_writer is None:
@@ -1038,9 +1137,16 @@ def _run_gui(args: argparse.Namespace) -> int:
                         sample.timestamp_sec, sample.frame_bgr, sample.detected,
                         sample.payload["detector_landmarks"], sample.payload["processed_landmarks"],
                     ))
-                else:
+                elif sample.input_type == "webcam_wilor":
                     self._record_writer.append(WiLoRRecordSample(
                         sample.timestamp_sec, sample.frame_bgr, sample.detected, sample.payload["detection"]
+                    ))
+                else:
+                    self._record_writer.append(QuestHTSRecordSample(
+                        sample.timestamp_sec, sample.detected,
+                        sample.payload["landmarks_unity_left"], sample.payload["landmarks_rfu"],
+                        sample.payload["wrist_position_unity_left"],
+                        sample.payload["wrist_quaternion_unity_left"],
                     ))
 
         def _stop_recording(self, *, finish: bool) -> None:
@@ -1239,11 +1345,25 @@ def _run_gui(args: argparse.Namespace) -> int:
             if elapsed > 0:
                 self._fps = 1.0 / elapsed
             self._last_tick = now
-            self.camera_status.setText(
-                f"{'记录回放' if self.context.mode is RunMode.REPLAY else f'Webcam {self.context.camera_index}'} | 输入: "
-                f"{'MediaPipe' if self.input_device_type == 'webcam' else 'WiLoR'} | "
-                f"手侧: {self.context.hand_side} | GUI: {self._fps:.1f} FPS"
-            )
+            if self.input_device_type == "quest_hts":
+                if self.context.mode is RunMode.LIVE:
+                    connected = self.device.connected
+                    input_status = "已连接" if connected else "等待/断开（保持最后姿态）"
+                    source = (
+                        f"Quest {self.context.quest_transport} {self.context.quest_host}:{self.context.quest_port}"
+                        f" | {input_status} | 接收: {self.device.fps:.1f} FPS"
+                    )
+                else:
+                    source = "Quest HTS 记录回放（无视频）"
+                self.camera_status.setText(
+                    f"{source} | 手侧: {self.context.hand_side} | GUI: {self._fps:.1f} FPS"
+                )
+            else:
+                self.camera_status.setText(
+                    f"{'记录回放' if self.context.mode is RunMode.REPLAY else f'Webcam {self.context.camera_index}'} | 输入: "
+                    f"{'MediaPipe' if self.input_device_type == 'webcam' else 'WiLoR'} | "
+                    f"手侧: {self.context.hand_side} | GUI: {self._fps:.1f} FPS"
+                )
             if self.debug_worker.error is not None:
                 self.status_label.setText(f"MuJoCo debug 失败: {self.debug_worker.error}")
             if paused:

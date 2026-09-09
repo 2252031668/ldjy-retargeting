@@ -17,21 +17,24 @@ class TuningGuiCliTests(unittest.TestCase):
 
         self.assertEqual(
             set(choices),
-            {"adaptive_mediapipe", "adaptive_wilor", "mano_pad_pose_wilor"},
+            {"adaptive_mediapipe", "adaptive_wilor", "adaptive_quest_hts", "mano_pad_pose_wilor"},
         )
         self.assertEqual(choices["mano_pad_pose_wilor"].input_types, ("webcam_wilor",))
+        self.assertEqual(choices["adaptive_quest_hts"].input_types, ("quest_hts",))
 
     def test_only_wilor_input_exposes_the_mano_overlay_toggle(self):
         from tuning_gui import supports_mano_overlay
 
         self.assertFalse(supports_mano_overlay("webcam"))
         self.assertTrue(supports_mano_overlay("webcam_wilor"))
+        self.assertFalse(supports_mano_overlay("quest_hts"))
 
     def test_wilor_hides_only_mediapipe_preprocessing_controls(self):
         from tuning_gui import parameter_specs_for_input
 
         webcam_paths = {spec.path for spec in parameter_specs_for_input("webcam")}
         wilor_paths = {spec.path for spec in parameter_specs_for_input("webcam_wilor")}
+        quest_paths = {spec.path for spec in parameter_specs_for_input("quest_hts")}
 
         self.assertIn("video_input.z_scale", webcam_paths)
         self.assertIn("video_input.correct_segments", webcam_paths)
@@ -41,9 +44,10 @@ class TuningGuiCliTests(unittest.TestCase):
         self.assertIn("retarget.segment_scaling.index.tip", wilor_paths)
         self.assertIn("retarget.lp_alpha", wilor_paths)
         self.assertIn("tip_offsets.thumb.axis_mm", wilor_paths)
+        self.assertEqual(quest_paths, wilor_paths)
 
     def test_parser_accepts_gui_default_or_one_supported_webcam_device(self):
-        from tuning_gui import build_parser, input_device_type_from_args
+        from tuning_gui import build_parser, initial_config_path, input_device_type_from_args
 
         parser = build_parser()
         self.assertEqual(input_device_type_from_args(parser.parse_args([])), "webcam")
@@ -51,6 +55,14 @@ class TuningGuiCliTests(unittest.TestCase):
         self.assertEqual(
             input_device_type_from_args(parser.parse_args(["--webcam-wilor"])),
             "webcam_wilor",
+        )
+        self.assertEqual(
+            input_device_type_from_args(parser.parse_args(["--quest-hts"])),
+            "quest_hts",
+        )
+        self.assertEqual(
+            initial_config_path(parser.parse_args(["--quest-hts"])).name,
+            "adaptive_analytical_quest_hts.yaml",
         )
         with self.assertRaises(SystemExit):
             parser.parse_args(["--webcam", "--webcam-wilor"])
@@ -93,6 +105,8 @@ class TuningGuiCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--webcam", result.stdout)
         self.assertIn("--webcam-wilor", result.stdout)
+        self.assertIn("--quest-hts", result.stdout)
+        self.assertIn("--quest-transport", result.stdout)
         self.assertIn("--camera-index", result.stdout)
 
     def test_readme_documents_tuning_record_and_replay(self):
