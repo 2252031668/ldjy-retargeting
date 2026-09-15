@@ -23,9 +23,9 @@ uv sync --extra gui --extra tuning
 uv run --no-sync python example/tuning_gui.py
 ```
 
-在窗口顶部选择算法、`Webcam MediaPipe`、`Webcam WiLoR` 或 `Quest HTS`，再点击“应用输入”。
+在窗口顶部选择算法、`Webcam MediaPipe`、`Webcam WiLoR`、`Quest HTS` 或 `MANUS Raw Skeleton`，再点击“应用输入”。
 命令行
-`--webcam`、`--webcam-wilor`、`--quest-hts`、`--camera-index`、`--quest-transport`、`--quest-host`、`--quest-port` 和 `--hand` 仅保留为初始选择兼容参数，不再是日常启动所需。
+`--webcam`、`--webcam-wilor`、`--quest-hts`、`--manus`、`--camera-index`、`--quest-transport`、`--quest-host`、`--quest-port` 和 `--hand` 仅保留为初始选择兼容参数，不再是日常启动所需。
 例如旧脚本可继续使用 `python example/tuning_gui.py --webcam --camera-index 0 --hand right`，但推荐直接启动 GUI。
 
 GUI 相机预览按检测帧更新；独立 MuJoCo debug 窗口按 120 Hz 刷新，直接显示当前重定向
@@ -83,7 +83,7 @@ WiLoR 输入已是米制 MANO 关键点，不经过 MediaPipe 的 `z_scale`、0.
 
 - AdaptiveOptimizerAnalytical：默认算法。在整手姿态和捏合指尖目标间连续切换。
 - ManoPadPoseOptimizer：WiLoR 专用的指腹捏合模式。固定 `beta_robot`，用机器人尺度 MANO 的五个指腹位置和表面法线驱动 LDJY 20-DOF IK；捏合时联立求解拇指和参与手指。
-- 输入：pkl 回放、Vision Pro、视频、USB 摄像头、RealSense、ZED。
+- 输入：pkl 回放、Vision Pro、视频、USB 摄像头、RealSense、ZED、Quest HTS、MANUS Raw Skeleton。
 - 实时调参：PySide6 参数面板、MediaPipe 相机预览和 MuJoCo debug 叠加。
 - 虚拟末端调节：每根手指可沿末节纵向与指甲-指肚厚度方向调整 task tip，并同步到优化器和仿真。
 - LDJY 资产：内置 20 自由度 URDF、左右手 MJCF 和网格，不依赖 Git 子模块。
@@ -135,7 +135,7 @@ ldjy_retargeting/
 example/
   teleop_sim.py                   常规仿真入口：回放、视频、USB 相机、RealSense、ZED、Vision Pro
   tuning_gui.py                   USB 实时调参与静态记录回放入口
-  input_devices/                  各输入设备适配器，统一输出 MediaPipe (21, 3) 关键点
+  input_devices/                  各输入设备适配器；MANUS 保留原生完整骨架而非 21 点
   config/                         自适应算法与视频输入 YAML 配置
   data/                           pkl 回放样例
 
@@ -147,12 +147,13 @@ docs/                             中文开发者文档与设计/实施记录
 
 ## 实时图形调参：`tuning_gui.py`
 
-`example/tuning_gui.py` 是面向 USB 摄像头实时重定向的桌面调参工具，支持 MediaPipe 和 WiLoR 两条输入链路：
+`example/tuning_gui.py` 是实时重定向的桌面调参工具，支持 MediaPipe、WiLoR、Quest HTS 和 MANUS：
 
 ```text
 WebcamMediaPipe -> MediaPipe (21, 3) -> Retargeter -> LDJY qpos (20) -> MuJoCo
 WebcamWiLoR -> WiLoR MANO joints (21, 3) -> Retargeter -> LDJY qpos (20) -> MuJoCo
 WebcamWiLoR -> WiLoR hand_pose + beta_robot -> MANO 指腹位置/法线 + 末节表面距离 -> Pad IK -> LDJY qpos (20)
+MANUS Raw Skeleton -> Full Skeleton IK 或 Ergonomics Hybrid -> LDJY qpos (20) -> MuJoCo
 ```
 
 程序会打开两个窗口：
@@ -241,6 +242,22 @@ adb reverse --list
 
 Quest landmarks 保持 wrist 局部坐标，只转换 Unity-left 到重定向所用的 RFU 坐标，不应用 wrist 的全局 6DoF 位姿；因此它不使用或显示 `video_input` 的尺度、深度和骨段修正参数。Quest 没有相机预览，左侧状态区只显示连接与接收 FPS。短暂丢帧或断连时保持最后有效姿态；第一版不会自动重连，修改设置后点击“应用输入”即可重新建立连接。
 
+### MANUS 手套实时输入
+
+MANUS 使用 Core 3.2 的 Linux Integrated Mode，不经过 MediaPipe 21 点。先完成 MANUS Core 的官方手套校准并确保当前用户的 `.mcal` 已加载；运行项目时不要同时开启 Core Dashboard 或官方 SDK Client。SDK 作为外部安装依赖，不写入项目 `pyproject.toml`：
+
+```bash
+uv pip install -e /home/wxx/manus_sdk/Python
+uv run --no-sync python example/tuning_gui.py --manus --hand right
+```
+
+在 GUI 中选择 `MANUS Raw Skeleton`。可选两条已实现路径：
+
+- `MANUS Full Skeleton`：完整 Raw Skeleton 的节点位置、旋转和拓扑进入有界 IK；每副手套每只手首次使用时，保持自然张手约 2 秒采集中立姿态。
+- `MANUS Ergonomics Hybrid`：食指、中指、无名指使用 MANUS 官方 Ergonomics 角度；拇指、小指使用 Raw Skeleton 任务空间 IK。首次使用点击“开始采集扩展标定”，依次完成张手、张开、握拳和四种拇指捏合；标定会自动复用。
+
+两类项目标定都不是 MANUS `.mcal`。它们按手套 ID、手侧和机器人 URDF 指纹保存到 `outputs/manus_calibrations/` 或 `outputs/manus_ergonomics_calibrations/`。MANUS 记录保存完整 Raw Skeleton、40 维 Ergonomics 及时间戳到 `outputs/tuning_records/manus/<日期时间>/`，无需 SDK 即可回放。更多细节见 [MANUS 快速开始](docs/manus-quickstart.md) 和 [SDK 数据与映射分析](docs/manus-sdk-analysis.md)。
+
 选择 `MANO 指腹捏合 IK (WiLoR)` 可启用第一版指腹模式。它直接使用 WiLoR 的绝对局部
 `hand_pose`，但始终使用 `mano_ldjy_reference.yaml` 中固定的机器人 `betas`；不减去
 `hand_pose_ref`，也不使用 WiLoR 的 `global_orient` 和 `translation` 移动机器人 wrist。
@@ -265,9 +282,9 @@ uv run --no-sync \
   python example/tuning_gui.py --config config/adaptive_analytical_video.yaml
 ```
 
-首版 GUI 支持实时输入与自身的静态调参记录回放。MediaPipe/WiLoR 会把每个完成推理的相机视频和结果保存到
+GUI 支持实时输入与自身的静态调参记录回放。MediaPipe/WiLoR 会把每个完成推理的相机视频和结果保存到
 `outputs/tuning_records/{mediapipe,wilor}/<日期时间>/`。Quest 则保存纯数据到
-`outputs/tuning_records/quest_hts/<日期时间>/`：原始 Unity-left landmarks、RFU landmarks、wrist position 与 quaternion；不创建黑色视频。进入顶部的“静态调参记录”模式后可选择同类记录。回放锁定录制手侧，不再运行检测模型；MediaPipe 会按当前 `video_input` 参数重新预处理原始点，WiLoR 与 Quest 直接读取保存结果。底层仍依赖 `InputDeviceBase` 的标准 `(21, 3)` 接口。
+`outputs/tuning_records/quest_hts/<日期时间>/`：原始 Unity-left landmarks、RFU landmarks、wrist position 与 quaternion；不创建黑色视频。MANUS 保存到 `outputs/tuning_records/manus/<日期时间>/`，包含原生节点 transform、拓扑、Ergonomics 和项目标定快照。进入顶部的“静态调参记录”模式后可选择同类记录。回放锁定录制手侧，不再运行检测模型；MediaPipe 会按当前 `video_input` 参数重新预处理原始点，WiLoR、Quest 和 MANUS 直接读取保存结果。
 
 ### 当前 YAML 与默认 YAML
 
