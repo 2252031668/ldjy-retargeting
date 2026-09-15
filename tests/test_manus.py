@@ -188,26 +188,17 @@ def test_manus_self_parent_hand_node_is_a_root_not_a_cycle():
     assert rt.optimizer._parent_mapped_indices[root] == -1
 
 
-def test_ergonomics_hybrid_calibrates_and_outputs_bounded_qpos():
-    rt, topo = hybrid_runtime(), topology()
-    def frame(stamp, qpos, values):
-        raw = robot_frame(runtime().optimizer, topo, qpos, stamp)
-        return ManusFrame(raw.received_timestamp_sec, raw.sdk_timestamp, raw.glove_id, raw.side,
-                          raw.positions, raw.rotations, raw.scales, raw.topology, values, stamp, True)
-    open_values = np.zeros(40)
-    spread, fist = open_values.copy(), open_values.copy()
-    spread[[24, 28, 32]] = 20
-    for base in (24, 28, 32):
-        fist[base + 1:base + 4] = 70
-    poses = {
-        "open": [frame(i, np.zeros(20), open_values) for i in range(50)],
-        "spread": [frame(100 + i, np.zeros(20), spread) for i in range(50)],
-        "fist": [frame(200 + i, np.full(20, .2), fist) for i in range(50)],
-    }
-    for number, name in enumerate(("finger1", "finger2", "finger3", "finger4")):
-        poses[f"pinch_{name}"] = [frame(300 + 50 * number + i, np.full(20, .15), fist) for i in range(50)]
-    calibration = rt.optimizer.calibrate(poses)
-    assert calibration.matches(poses["open"][0], rt.optimizer.urdf_fingerprint)
-    qpos, diagnostics = rt.process_manus(frame(600, np.full(20, .1), fist))
+def test_ergonomics_hybrid_uses_shared_raw_calibration_and_outputs_bounded_qpos():
+    rt, source, topo = hybrid_runtime(), runtime(), topology()
+    calibration = source.optimizer.calibrate([
+        robot_frame(source.optimizer, topo, np.zeros(20), stamp) for stamp in range(50)
+    ])
+    rt.optimizer.set_raw_calibration(calibration)
+    raw = robot_frame(source.optimizer, topo, np.full(20, .1), 600)
+    values = raw.ergonomics.copy()
+    values[[24, 28, 32]] += 20
+    frame = ManusFrame(raw.received_timestamp_sec, raw.sdk_timestamp, raw.glove_id, raw.side,
+                       raw.positions, raw.rotations, raw.scales, raw.topology, values, 600, True)
+    qpos, diagnostics = rt.process_manus(frame)
     assert np.isfinite(qpos).all() and np.all(qpos >= rt.optimizer.limits[:, 0]) and np.all(qpos <= rt.optimizer.limits[:, 1])
     assert diagnostics["ergonomics_direct_qpos"].shape == (12,)
