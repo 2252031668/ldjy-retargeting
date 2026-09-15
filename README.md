@@ -1,42 +1,26 @@
 # ldjy-retargeting
 
-面向 LDJY 五指灵巧手的手部姿态重定向项目。它将 MediaPipe 格式的
-`(21, 3)` 人手关键点转换为 LDJY 手的 20 个关节角，并在 MuJoCo 中验证结果。
+面向 LDJY 五指灵巧手的手部姿态重定向项目。它将 MediaPipe/WiLoR/Quest 的 21 点输入，
+或 MANUS 的原生完整手骨架，转换为 LDJY 手的 20 个关节角，并在 MuJoCo 中验证结果。
 
 本版本仅包含算法、仿真、回放和相机输入，不包含 LDJY 真机控制。
 
 ## 快速开始
 
-项目使用 `uv` 管理固定的 Python 3.10 环境（见 `.python-version`），并默认使用
-清华 PyPI 镜像下载依赖。USB 摄像头是默认实时输入设备，OpenCV 设备索引默认是 `0`。
-
-```bash
-uv sync --extra tuning
-uv run --no-sync python example/teleop_sim.py --webcam --camera-index 0 --hand right --show-video
-```
-
-实时调节相机输入和重定向参数时，使用图形调参工具。它会打开一个含 MediaPipe 检测画面的
-参数窗口，以及一个独立的 MuJoCo debug 窗口：
+项目使用 `uv` 管理固定的 Python 3.10 环境（见 `.python-version`），并默认使用清华 PyPI 镜像下载依赖。日常入口是图形调参工具：它会打开一个检测/状态窗口和独立的 MuJoCo debug 窗口。
 
 ```bash
 uv sync --extra gui --extra tuning
-uv run --no-sync python example/tuning_gui.py
+uv run --no-sync python example/tuning_gui.py --webcam --hand right
 ```
 
 在窗口顶部选择算法、`Webcam MediaPipe`、`Webcam WiLoR`、`Quest HTS` 或 `MANUS Raw Skeleton`，再点击“应用输入”。
 命令行
-`--webcam`、`--webcam-wilor`、`--quest-hts`、`--manus`、`--camera-index`、`--quest-transport`、`--quest-host`、`--quest-port` 和 `--hand` 仅保留为初始选择兼容参数，不再是日常启动所需。
-例如旧脚本可继续使用 `python example/tuning_gui.py --webcam --camera-index 0 --hand right`，但推荐直接启动 GUI。
+`--webcam`、`--webcam-wilor`、`--quest-hts`、`--manus`、`--camera-index`、`--quest-transport`、`--quest-host`、`--quest-port` 和 `--hand` 用于设置 GUI 的初始选择；其余操作均在 GUI 内完成。
 
 GUI 相机预览按检测帧更新；独立 MuJoCo debug 窗口按 120 Hz 刷新，直接显示当前重定向
 命令的运动学姿态，用于核对 Pinocchio IK 与 MuJoCo 指腹 site 是否一致。它不模拟 actuator
 跟踪误差或物理时间。
-
-不接相机时，可以使用仓库自带的 21 点回放数据验证完整链路：
-
-```bash
-uv run --no-sync python example/teleop_sim.py --play example/data/avp1.pkl --hand left
-```
 
 ### WiLoR 实时 USB 摄像头
 
@@ -71,8 +55,8 @@ wget https://huggingface.co/spaces/rolpotamias/WiLoR/resolve/main/pretrained_mod
 `third_party/WiLoR/mano_data/MANO_RIGHT.pkl`。该文件不能由本仓库自动下载或提交。上述权重和 MANO 文件均为本机未跟踪文件，不会随主仓库或子模块 push。
 
 ```bash
-uv run --extra wilor python example/teleop_sim.py \
-  --input webcam_wilor --camera-index 0 --hand left --show-video
+uv sync --extra gui --extra tuning --extra wilor
+uv run --no-sync python example/tuning_gui.py --webcam-wilor --hand left
 ```
 
 `--hand` 选择 WiLoR 输出的物理左右手。短暂丢失目标侧时会保持最后一帧有效 MANO 21 点；若同侧出现多个
@@ -274,12 +258,11 @@ GUI 的“末端任务点”分区提供五根手指各两个偏移：纵向沿 
 不会覆盖正式模型。`保存 YAML` 仅保存调参配置；确认后点击“导出正式资产”，才会更新
 `retarget_tip_offsets.yaml` 并重建左右独立手和 OpenArm 双臂资产。
 
-常用选项：
+需要指定预设 YAML 时，`--config` 的相对路径以 `example/` 为基准；它必须和当前选择的输入类型兼容。例如：
 
 ```bash
-# 指定自己的自适应配置
-uv run --no-sync \
-  python example/tuning_gui.py --config config/adaptive_analytical_video.yaml
+uv run --no-sync python example/tuning_gui.py \
+  --webcam --config config/adaptive_analytical_video.yaml --hand right
 ```
 
 GUI 支持实时输入与自身的静态调参记录回放。MediaPipe/WiLoR 会把每个完成推理的相机视频和结果保存到
@@ -308,20 +291,29 @@ GUI 支持实时输入与自身的静态调参记录回放。MediaPipe/WiLoR 会
 
 ## 常用命令
 
+以下命令均从仓库根目录运行。日常使用的唯一入口是 `tuning_gui.py`；视频、RealSense、ZED 和 Vision Pro 的 `teleop_sim.py` 旧命令不在这里作为推荐工作流。
+
 ```bash
-# USB 摄像头图形调参 / 静态记录回放
-uv run --no-sync python example/tuning_gui.py
+# 1. 默认 USB 摄像头 + MediaPipe 调参
+uv sync --extra gui --extra tuning
+uv run --no-sync python example/tuning_gui.py --webcam --hand right
 
-# MP4 视频
-uv run --no-sync python example/teleop_sim.py --video <VIDEO.mp4> --hand right --show-video
+# 2. USB 摄像头 + WiLoR 调参（首次还需要按上文下载 WiLoR/MANO 资源）
+uv sync --extra gui --extra tuning --extra wilor
+uv run --no-sync python example/tuning_gui.py --webcam-wilor --hand right
 
-# RealSense / ZED
-uv sync --extra tuning --extra realsense
-uv run --no-sync python example/teleop_sim.py --realsense --hand right
+# 3. Quest HTS：默认 UDP 监听 0.0.0.0:9000
+uv sync --extra gui --extra tuning --extra quest
+uv run --no-sync python example/tuning_gui.py --quest-hts --hand right
 
-uv sync --extra tuning --extra zed
-uv run --no-sync python example/teleop_sim.py --zed --hand right
+# 4. MANUS：先确认官方 SDK 已独立安装，且此时没有运行 Dashboard / SDK Client
+uv pip install -e /home/wxx/manus_sdk/Python
+uv run python -m example.input_devices.manus_glove --hand right --seconds 5
+uv run --no-sync python example/tuning_gui.py --manus --hand right
 
-# Vision Pro 流
-uv run --no-sync python example/teleop_sim.py --input visionpro --ip <IP> --hand right
+# 5. 运行当前 MANUS 单元测试（不需要连接手套）
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q \
+  tests/test_manus.py tests/test_tuning_gui_cli.py tests/test_input_record_samples.py
 ```
+
+启动 GUI 后再在界面中点击“应用输入”、开始/停止记录和选择“静态调参记录”回放；目前没有把这些 GUI 操作伪装成一个不存在的单行 CLI。MANUS 录制必须先有对应的项目标定：Full Skeleton 使用中立姿态标定，Ergonomics Hybrid 使用七阶段标定。
