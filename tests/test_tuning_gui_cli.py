@@ -17,10 +17,11 @@ class TuningGuiCliTests(unittest.TestCase):
 
         self.assertEqual(
             set(choices),
-            {"adaptive_mediapipe", "adaptive_wilor", "adaptive_quest_hts", "mano_pad_pose_wilor"},
+            {"adaptive_mediapipe", "adaptive_wilor", "adaptive_quest_hts", "mano_pad_pose_wilor", "manus_full_skeleton", "manus_ergonomics_hybrid"},
         )
         self.assertEqual(choices["mano_pad_pose_wilor"].input_types, ("webcam_wilor",))
         self.assertEqual(choices["adaptive_quest_hts"].input_types, ("quest_hts",))
+        self.assertEqual(choices["manus_full_skeleton"].input_types, ("manus",))
 
     def test_only_wilor_input_exposes_the_mano_overlay_toggle(self):
         from tuning_gui import supports_mano_overlay
@@ -28,9 +29,10 @@ class TuningGuiCliTests(unittest.TestCase):
         self.assertFalse(supports_mano_overlay("webcam"))
         self.assertTrue(supports_mano_overlay("webcam_wilor"))
         self.assertFalse(supports_mano_overlay("quest_hts"))
+        self.assertFalse(supports_mano_overlay("manus"))
 
     def test_wilor_hides_only_mediapipe_preprocessing_controls(self):
-        from tuning_gui import parameter_specs_for_input
+        from tuning_gui import parameter_specs_for_input, parameter_specs_for_selection
 
         webcam_paths = {spec.path for spec in parameter_specs_for_input("webcam")}
         wilor_paths = {spec.path for spec in parameter_specs_for_input("webcam_wilor")}
@@ -45,6 +47,11 @@ class TuningGuiCliTests(unittest.TestCase):
         self.assertIn("retarget.lp_alpha", wilor_paths)
         self.assertIn("tip_offsets.thumb.axis_mm", wilor_paths)
         self.assertEqual(quest_paths, wilor_paths)
+        manus_paths = {spec.path for spec in parameter_specs_for_selection("manus_full_skeleton", "manus")}
+        self.assertIn("retarget.rotation_weight", manus_paths)
+        self.assertIn("retarget.max_nfev", manus_paths)
+        self.assertNotIn("video_input.z_scale", manus_paths)
+        self.assertNotIn("retarget.segment_scaling.index.tip", manus_paths)
 
     def test_parser_accepts_gui_default_or_one_supported_webcam_device(self):
         from tuning_gui import build_parser, initial_config_path, input_device_type_from_args
@@ -60,6 +67,8 @@ class TuningGuiCliTests(unittest.TestCase):
             input_device_type_from_args(parser.parse_args(["--quest-hts"])),
             "quest_hts",
         )
+        self.assertEqual(input_device_type_from_args(parser.parse_args(["--manus"])), "manus")
+        self.assertEqual(initial_config_path(parser.parse_args(["--manus"])).name, "manus_full_skeleton.yaml")
         self.assertEqual(
             initial_config_path(parser.parse_args(["--quest-hts"])).name,
             "adaptive_analytical_quest_hts.yaml",
@@ -107,6 +116,7 @@ class TuningGuiCliTests(unittest.TestCase):
         self.assertIn("--webcam-wilor", result.stdout)
         self.assertIn("--quest-hts", result.stdout)
         self.assertIn("--quest-transport", result.stdout)
+        self.assertIn("--manus", result.stdout)
         self.assertIn("--camera-index", result.stdout)
 
     def test_readme_documents_tuning_record_and_replay(self):

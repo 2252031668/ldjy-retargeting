@@ -37,6 +37,9 @@ class TuningRuntime:
         self._mano_pad_builder = None
         self._pad_filter: LPFilter | None = None
         self._is_mano_pad = False
+        self._is_manus = False
+        self._manus_requires_calibration = False
+        self._manus_hybrid = False
         self.current_urdf_path: Path
         self.debug_mjcf_path: Path
         self.apply_config(config)
@@ -47,6 +50,11 @@ class TuningRuntime:
 
     def apply_config(self, config: dict[str, Any]) -> None:
         """Apply a fresh configuration without preserving old optimizer state."""
+        previous_manus_calibration = (
+            self.optimizer.calibration
+            if getattr(self, "_manus_requires_calibration", False) and getattr(self, "optimizer", None) is not None
+            else None
+        )
         candidate = copy.deepcopy(config)
         offsets = normalize_tip_offsets(candidate.get("tip_offsets"))
         cache_version = (
@@ -59,7 +67,32 @@ class TuningRuntime:
         candidate.setdefault("optimizer", {})["urdf_path"] = str(urdf_path)
         candidate["optimizer"]["hand_side"] = self.hand_side
         candidate["__yaml_dir"] = str(self._yaml_dir)
-        if candidate.get("optimizer", {}).get("type") == "ManoPadPoseOptimizer":
+        optimizer_type = candidate.get("optimizer", {}).get("type")
+        if optimizer_type == "ManusFullSkeletonRetargeter":
+            from ldjy_retargeting.manus import ManusFullSkeletonRetargeter
+
+            optimizer = ManusFullSkeletonRetargeter(candidate)
+            if previous_manus_calibration is not None:
+                optimizer.set_calibration(previous_manus_calibration)
+            retargeter = None
+            self._mano_pad_builder = None
+            self._pad_filter = None
+            self._is_mano_pad = False
+            self._is_manus = True
+            self._manus_requires_calibration = True
+            self._manus_hybrid = False
+        elif optimizer_type == "ManusErgonomicsHybridRetargeter":
+            from ldjy_retargeting.manus import ManusErgonomicsHybridRetargeter
+
+            optimizer = ManusErgonomicsHybridRetargeter(candidate)
+            retargeter = None
+            self._mano_pad_builder = None
+            self._pad_filter = None
+            self._is_mano_pad = False
+            self._is_manus = True
+            self._manus_requires_calibration = True
+            self._manus_hybrid = True
+        elif optimizer_type == "ManoPadPoseOptimizer":
             from example.mano_viewer import (
                 MANOModel, MANO_MODEL_PATH, PAD_3PT_VERTEX_IDS, PAD_VERTEX_IDS, TIP_ORDER,
             )
@@ -81,6 +114,9 @@ class TuningRuntime:
             optimizer = ManoPadPoseOptimizer(candidate)
             self._pad_filter = LPFilter(candidate.get("retarget", {}).get("lp_alpha", 0.2))
             self._is_mano_pad = True
+            self._is_manus = False
+            self._manus_requires_calibration = False
+            self._manus_hybrid = False
             retargeter = None
         else:
             retargeter = Retargeter(candidate, self.hand_side)
@@ -89,6 +125,9 @@ class TuningRuntime:
             self._mano_pad_builder = None
             self._pad_filter = None
             self._is_mano_pad = False
+            self._is_manus = False
+            self._manus_requires_calibration = False
+            self._manus_hybrid = False
         self._config = candidate
         self.retargeter = retargeter
         self.optimizer = optimizer
@@ -180,6 +219,49 @@ class TuningRuntime:
         qpos, diagnostics = self.retargeter.retarget_verbose(raw_keypoints)
         return qpos, diagnostics
 
+    def process_manus(self, frame: Any) -> tuple[np.ndarray, dict[str, Any]]:
+        if not self._is_manus:
+            raise RuntimeError("当前算法不是 MANUS Skeleton 算法")
+        if self._manus_requires_calibration and self.optimizer.calibration is None:
+            path = (self.manus_ergonomics_calibration_path(frame.glove_id, frame.side)
+                    if self._manus_hybrid else self.manus_calibration_path(frame.glove_id, frame.side))
+            if path.is_file():
+                from ldjy_retargeting.manus import ManusCalibration, ManusErgonomicsCalibration
+                calibration = (ManusErgonomicsCalibration if self._manus_hybrid else ManusCalibration).load(path)
+                matches = calibration.matches(frame, self.optimizer.urdf_fingerprint) if self._manus_hybrid else calibration.matches(frame)
+                if not matches:
+                    raise ValueError("已保存的 MANUS 标定与当前手套/拓扑不匹配")
+                self.optimizer.set_calibration(calibration)
+        return self.optimizer.solve(frame)
+
+    @staticmethod
+    def manus_calibration_path(glove_id: int, side: str) -> Path:
+        return Path(__file__).resolve().parents[2] / "outputs" / "manus_calibrations" / f"{glove_id}_{side}.npz"
+
+    @staticmethod
+    def manus_ergonomics_calibration_path(glove_id: int, side: str) -> Path:
+        return Path(__file__).resolve().parents[2] / "outputs" / "manus_ergonomics_calibrations" / f"{glove_id}_{side}.npz"
+
+    def calibrate_manus(self, frames: list[Any], *, sdk_version: str = "unknown") -> Path:
+        if not self._manus_requires_calibration:
+            raise RuntimeError("当前算法不是 MANUS Full Skeleton")
+        calibration = self.optimizer.calibrate(frames, sdk_version=sdk_version)
+        return calibration.save(self.manus_calibration_path(calibration.glove_id, calibration.side))
+
+    def calibrate_manus_ergonomics(self, poses: dict[str, list[Any]], *, sdk_version: str = "unknown") -> Path:
+        if not self._manus_hybrid:
+            raise RuntimeError("当前算法不是 MANUS Ergonomics Hybrid")
+        calibration = self.optimizer.calibrate(poses, sdk_version=sdk_version)
+        return calibration.save(self.manus_ergonomics_calibration_path(calibration.glove_id, calibration.side))
+
+    @property
+    def manus_calibrated(self) -> bool:
+        return self._is_manus and (not self._manus_requires_calibration or self.optimizer.calibration is not None)
+
+    @property
+    def manus_requires_calibration(self) -> bool:
+        return self._manus_requires_calibration
+
     def process_mano_parameters(
         self, parameters: dict[str, np.ndarray]
     ) -> tuple[np.ndarray, dict[str, Any]]:
@@ -206,7 +288,9 @@ class TuningRuntime:
         return filtered, diagnostics
 
     def reset(self) -> None:
-        if self._is_mano_pad:
+        if self._is_manus:
+            self.optimizer.reset()
+        elif self._is_mano_pad:
             self.optimizer.last_qpos = None
             if self._pad_filter is not None:
                 self._pad_filter.reset()

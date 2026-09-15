@@ -32,3 +32,7 @@ ldjy_retargeting/assets/robots/ldjy_hand/.cache/
 
 # Runtime recordings and inference results. WiLoR source remains an unmodified submodule.
 outputs/
+
+# Per-user MANUS glove calibration; keep the portable files beside the project,
+# but never publish them with its source code.
+calibrations/manus/*.mcal

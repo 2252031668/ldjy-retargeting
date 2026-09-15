@@ -22,6 +22,7 @@ ACTUAL_LINK_RGBA = np.array((0.1, 0.85, 0.9, 0.95))
 TARGET_RGBA = np.array((0.25, 1.0, 0.25, 0.95))
 PINCH_TARGET_RGBA = np.array((1.0, 0.2, 0.2, 0.95))
 ACTUAL_PAD_RGBA = np.array((0.1, 0.8, 1.0, 0.95))
+MANUS_ERROR_RGBA = np.array((1.0, 0.25, 0.15, 0.9))
 PINCH_VISUAL_ALPHA = 0.05
 TIP_DIR_DISPLAY_LENGTH = 0.015
 IDENTITY_MAT = np.eye(3).ravel()
@@ -170,7 +171,7 @@ def _active_target_segments(optimizer, mediapipe_keypoints, pinch_alphas):
     return segments
 
 
-def _draw_pad_targets(scene, model, actual_data, hand_side, diagnostics) -> None:
+def _draw_pad_targets(scene, model, actual_data, hand_side, diagnostics, wrist_pos, wrist_rot) -> None:
     targets = diagnostics.get("pad_targets_m")
     normals = diagnostics.get("pad_target_normals")
     if targets is None:
@@ -184,11 +185,10 @@ def _draw_pad_targets(scene, model, actual_data, hand_side, diagnostics) -> None
     if command_normals is not None:
         command_normals = np.asarray(command_normals, dtype=np.float64)
     for index, target in enumerate(targets):
-        # Pad diagnostics are already expressed in the LDJY root/world frame.
-        world_target = target
+        world_target = target @ wrist_rot.T + wrist_pos
         _add_sphere(scene, world_target, f"MANO pad target {index + 1}", TARGET_RGBA, 0.0022)
         if normals is not None and normals.shape == targets.shape:
-            world_normal = normals[index]
+            world_normal = wrist_rot @ normals[index]
             _add_link(
                 scene,
                 world_target,
@@ -198,13 +198,13 @@ def _draw_pad_targets(scene, model, actual_data, hand_side, diagnostics) -> None
                 width=0.00055,
             )
         if command_positions is not None and command_positions.shape == targets.shape:
-            command = command_positions[index]
+            command = command_positions[index] @ wrist_rot.T + wrist_pos
             _add_sphere(scene, command, f"LDJY command pad {index + 1}", PINCH_TARGET_RGBA, 0.0018)
             if command_normals is not None and command_normals.shape == targets.shape:
                 _add_link(
                     scene,
                     command,
-                    command + command_normals[index] * 0.02,
+                    command + wrist_rot @ command_normals[index] * 0.02,
                     f"LDJY command pad normal {index + 1}",
                     PINCH_TARGET_RGBA,
                     width=0.00045,
@@ -222,6 +222,31 @@ def _draw_pad_targets(scene, model, actual_data, hand_side, diagnostics) -> None
             scene, world_point, world_point + world_normal * 0.02,
             f"MuJoCo actual pad normal {index + 1}", ACTUAL_PAD_RGBA, width=0.00045,
         )
+
+
+def _draw_manus_targets(scene, wrist_pos, wrist_rot, diagnostics, *, skeleton: bool, rays: bool) -> None:
+    targets = diagnostics.get("manus_target_positions_m")
+    if targets is None:
+        return
+    targets = np.asarray(targets, dtype=np.float64)
+    actual = np.asarray(diagnostics.get("manus_actual_positions_m", targets), dtype=np.float64)
+    parents = np.asarray(diagnostics.get("manus_parent_indices", np.full(len(targets), -1)), dtype=np.int64)
+    rotations = np.asarray(diagnostics.get("manus_target_rotations", np.tile(np.eye(3), (len(targets), 1, 1))))
+    world_targets = targets @ wrist_rot.T + wrist_pos
+    world_actual = actual @ wrist_rot.T + wrist_pos
+    if skeleton:
+        for i, point in enumerate(world_targets):
+            _add_sphere(scene, point, f"MANUS target {i}", TARGET_RGBA, .0022)
+            if parents[i] >= 0:
+                _add_link(scene, world_targets[parents[i]], point, f"MANUS edge {i}", TARGET_RGBA, .0007)
+    if rays:
+        axis_colors = (np.array((1., .2, .2, .9)), np.array((.2, 1., .2, .9)), np.array((.2, .4, 1., .9)))
+        for i, point in enumerate(world_targets):
+            _add_link(scene, point, world_actual[i], f"MANUS error {i}", MANUS_ERROR_RGBA, .0005)
+            world_rotation = wrist_rot @ rotations[i]
+            for axis, color in enumerate(axis_colors):
+                _add_link(scene, point, point + world_rotation[:, axis] * .012,
+                          f"MANUS axis {i}/{axis}", color, .00035)
 
 
 class DebugOverlay:
@@ -252,21 +277,26 @@ class DebugOverlay:
         diagnostics=None,
     ) -> None:
         scene.ngeom = 0
+        wrist_id = _object_id(
+            self.model, mujoco.mjtObj.mjOBJ_BODY, f"{self.hand_side}_retarget_wrist"
+        )
+        wrist_pos = actual_data.xpos[wrist_id].copy()
+        wrist_rot = actual_data.xmat[wrist_id].reshape(3, 3).copy()
         if self.show_skeleton:
             _draw_hand(
                 self.model, actual_data, scene, self.hand_side,
                 ACTUAL_JOINT_RGBA, ACTUAL_LINK_RGBA, "actual",
                 radius=0.0035, width=0.0015,
             )
+        if diagnostics is not None:
+            _draw_manus_targets(
+                scene, wrist_pos, wrist_rot, diagnostics,
+                skeleton=self.show_skeleton, rays=self.show_rays,
+            )
         if not self.show_rays:
             return
-        wrist_id = _object_id(
-            self.model, mujoco.mjtObj.mjOBJ_BODY, f"{self.hand_side}_retarget_wrist"
-        )
-        wrist_pos = actual_data.xpos[wrist_id].copy()
-        wrist_rot = actual_data.xmat[wrist_id].reshape(3, 3).copy()
         if diagnostics is not None:
-            _draw_pad_targets(scene, self.model, actual_data, self.hand_side, diagnostics)
+            _draw_pad_targets(scene, self.model, actual_data, self.hand_side, diagnostics, wrist_pos, wrist_rot)
         for segment in _active_target_segments(
             optimizer, mediapipe_keypoints, pinch_alphas
         ):

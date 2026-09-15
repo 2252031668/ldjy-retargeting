@@ -21,7 +21,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 DEBUG_CONTROL_HZ = 120
-INPUT_DEVICE_TYPES = ("webcam", "webcam_wilor", "quest_hts")
+INPUT_DEVICE_TYPES = ("webcam", "webcam_wilor", "quest_hts", "manus")
 MEDIAPIPE_ONLY_PARAMETER_PREFIX = "video_input."
 TUNING_RECORDS_ROOT = PROJECT_ROOT / "outputs" / "tuning_records"
 
@@ -92,6 +92,14 @@ def algorithm_choices() -> tuple[AlgorithmChoice, ...]:
             "mano_pad_pose_wilor", "MANO 指腹捏合 IK (WiLoR)",
             "mano_pad_pose_wilor.yaml", ("webcam_wilor",),
         ),
+        AlgorithmChoice(
+            "manus_full_skeleton", "MANUS Full Skeleton",
+            "manus_full_skeleton.yaml", ("manus",),
+        ),
+        AlgorithmChoice(
+            "manus_ergonomics_hybrid", "MANUS Ergonomics Hybrid",
+            "manus_ergonomics_hybrid.yaml", ("manus",),
+        ),
     )
 
 
@@ -111,6 +119,7 @@ def algorithm_key_for_config(config_path: Path, input_device_type: str) -> str:
     return {
         "webcam_wilor": "adaptive_wilor",
         "quest_hts": "adaptive_quest_hts",
+        "manus": "manus_full_skeleton",
     }.get(input_device_type, "adaptive_mediapipe")
 
 
@@ -128,6 +137,8 @@ def build_parser() -> argparse.ArgumentParser:
                              help="使用 USB 摄像头和 WiLoR MANO 输入（需要 --extra wilor）")
     input_group.add_argument("--quest-hts", action="store_true",
                              help="使用 Quest Hand Tracking Streamer 输入（需要 --extra quest）")
+    input_group.add_argument("--manus", action="store_true",
+                             help="使用 MANUS Integrated Raw Skeleton 输入")
     parser.add_argument("--camera-index", type=int, default=0,
                         help="OpenCV USB 摄像头索引")
     parser.add_argument("--quest-transport", choices=("udp", "tcp_server", "tcp_client"), default="udp",
@@ -147,6 +158,8 @@ def input_device_type_from_args(args: argparse.Namespace) -> str:
         return "webcam_wilor"
     if args.quest_hts:
         return "quest_hts"
+    if args.manus:
+        return "manus"
     return "webcam"
 
 
@@ -182,6 +195,12 @@ def parameter_specs_for_selection(algorithm_key: str, input_device_type: str):
     if algorithm_key == "mano_pad_pose_wilor":
         from ldjy_retargeting.tuning.parameters import pad_parameter_specs
         return pad_parameter_specs()
+    if algorithm_key == "manus_full_skeleton":
+        from ldjy_retargeting.tuning.parameters import manus_parameter_specs
+        return manus_parameter_specs()
+    if algorithm_key == "manus_ergonomics_hybrid":
+        from ldjy_retargeting.tuning.parameters import manus_ergonomics_parameter_specs
+        return manus_ergonomics_parameter_specs()
     return parameter_specs_for_input(input_device_type)
 
 
@@ -270,6 +289,9 @@ class MuJoCoDebugWorker(threading.Thread):
         for name in (
             "pad_targets_m", "pad_target_normals", "pad_actual_m", "pad_actual_normals",
             "pad_errors_m", "pad_normal_errors",
+            "manus_target_positions_m", "manus_target_rotations", "manus_actual_positions_m",
+            "manus_actual_rotations", "manus_parent_indices", "manus_position_errors_m",
+            "manus_direction_errors", "manus_rotation_errors_rad", "manus_ergonomics",
         ):
             if name in diagnostics:
                 frame_diagnostics[name] = np.asarray(diagnostics[name], dtype=np.float64).copy()
@@ -416,6 +438,11 @@ def _run_gui(args: argparse.Namespace) -> int:
             self._calibration_started_at: float | None = None
             self._calibration_target_frames = 45
             self._calibration_timeout_seconds = 3.0
+            self._manus_calibration_frames = []
+            self._manus_calibration_started_at: float | None = None
+            self._hybrid_calibration_poses: dict[str, list[Any]] = {}
+            self._hybrid_calibration_name: str | None = None
+            self._hybrid_calibration_started_at: float | None = None
             self._mano_overlay_sequence: object | None = None
             self._mano_overlay_frame: np.ndarray | None = None
 
@@ -452,6 +479,9 @@ def _run_gui(args: argparse.Namespace) -> int:
                     raise RuntimeError(
                         "Quest HTS 输入需要额外依赖。请执行: uv sync --extra quest"
                     ) from exc
+            if context.input_device_type == "manus":
+                from input_devices.manus_glove import ManusGlove
+                return ManusGlove(hand_side=context.hand_side)
             try:
                 from input_devices.webcam_wilor import WebcamWiLoR
 
@@ -609,6 +639,7 @@ def _run_gui(args: argparse.Namespace) -> int:
             self.input_combo.addItem("Webcam MediaPipe", "webcam")
             self.input_combo.addItem("Webcam WiLoR", "webcam_wilor")
             self.input_combo.addItem("Quest HTS", "quest_hts")
+            self.input_combo.addItem("MANUS Raw Skeleton", "manus")
             self.input_combo.setCurrentIndex(
                 self.input_combo.findData(self.context.input_device_type)
             )
@@ -668,8 +699,9 @@ def _run_gui(args: argparse.Namespace) -> int:
             self._update_algorithm_availability()
             replay = self.mode_combo.currentData() == RunMode.REPLAY.value
             quest = self.input_combo.currentData() == "quest_hts"
-            self.camera_caption.setVisible(not replay and not quest)
-            self.camera_spin.setVisible(not replay and not quest)
+            no_camera = self.input_combo.currentData() in {"quest_hts", "manus"}
+            self.camera_caption.setVisible(not replay and not no_camera)
+            self.camera_spin.setVisible(not replay and not no_camera)
             for widget in (
                 self.quest_transport_caption, self.quest_transport_combo,
                 self.quest_host_caption, self.quest_host_edit,
@@ -762,11 +794,16 @@ def _run_gui(args: argparse.Namespace) -> int:
             # Quest owns its UDP/TCP listening port. Release an active Quest
             # receiver before validating its replacement so "应用输入" can
             # reconnect on the same address after a settings change.
-            if self.context.mode is RunMode.LIVE and self.input_device_type == "quest_hts":
+            if self.context.mode is RunMode.LIVE and self.input_device_type in {"quest_hts", "manus"}:
                 self._stop_recording(finish=True)
                 self._cleanup_active_session()
             try:
                 candidate_session = self._session_for_algorithm(choice)
+                if context.mode is RunMode.REPLAY and context.input_device_type == "manus":
+                    snapshot = TuningSession(candidate_session.config_path)
+                    snapshot.load_snapshot(context.record_path / "config_snapshot.yaml")
+                    if snapshot.config.get("optimizer", {}).get("type") == candidate_session.config.get("optimizer", {}).get("type"):
+                        candidate_session = snapshot
                 if context.mode is RunMode.LIVE:
                     candidate_device = self._create_input_device(context, candidate_session.config)
                     candidate_replay = None
@@ -776,6 +813,9 @@ def _run_gui(args: argparse.Namespace) -> int:
                 elif context.input_device_type == "webcam_wilor":
                     from ldjy_retargeting.tuning.replay import WiLoRReplay
                     candidate_device, candidate_replay = None, WiLoRReplay(context.record_path)
+                elif context.input_device_type == "manus":
+                    from ldjy_retargeting.tuning.replay import ManusReplay
+                    candidate_device, candidate_replay = None, ManusReplay(context.record_path)
                 else:
                     from ldjy_retargeting.tuning.replay import QuestHTSReplay
                     candidate_device, candidate_replay = None, QuestHTSReplay(context.record_path)
@@ -784,6 +824,12 @@ def _run_gui(args: argparse.Namespace) -> int:
                     context.hand_side,
                     yaml_dir=candidate_session.config_path.parent,
                 )
+                if (context.input_device_type == "manus" and candidate_replay is not None
+                        and candidate_runtime.manus_requires_calibration):
+                    calibration = (candidate_replay.ergonomics_hybrid_calibration()
+                                   if choice.key == "manus_ergonomics_hybrid" else candidate_replay.calibration())
+                    if calibration is not None:
+                        candidate_runtime.optimizer.set_calibration(calibration)
                 candidate_debug = MuJoCoDebugWorker(context.hand_side, candidate_runtime.debug_mjcf_path)
                 candidate_debug.start()
             except Exception as exc:
@@ -816,9 +862,10 @@ def _run_gui(args: argparse.Namespace) -> int:
             self.run_toggle.setEnabled(True)
             self.run_toggle.setText("暂停")
             self._set_replay_controls_visible(context.mode is RunMode.REPLAY)
-            if self.input_device_type == "quest_hts":
-                self.preview_title.setText("Quest HTS（无视频预览）")
-                self.preview_label.setText("等待 Quest HTS 手部追踪数据...")
+            if self.input_device_type in {"quest_hts", "manus"}:
+                label = "Quest HTS" if self.input_device_type == "quest_hts" else "MANUS Raw Skeleton"
+                self.preview_title.setText(f"{label}（无视频预览）")
+                self.preview_label.setText(f"等待 {label} 数据...")
                 self.preview_label.setPixmap(QtGui.QPixmap())
             else:
                 self.preview_title.setText("OpenCV / MediaPipe 检测画面")
@@ -892,6 +939,10 @@ def _run_gui(args: argparse.Namespace) -> int:
                 layout.addWidget(warning)
             if specs[0].group == "15 条目标向量":
                 layout.addWidget(self._create_calibration_controls())
+            if specs[0].group == "MANUS 全骨架":
+                layout.addWidget(self._create_manus_calibration_controls())
+            if specs[0].group == "MANUS Ergonomics Hybrid":
+                layout.addWidget(self._create_hybrid_calibration_controls())
             for spec in specs:
                 layout.addWidget(self._create_control(spec))
             layout.addStretch(1)
@@ -913,6 +964,108 @@ def _run_gui(args: argparse.Namespace) -> int:
             self.calibration_status.setWordWrap(True)
             layout.addWidget(self.calibration_status)
             return group
+
+        def _create_manus_calibration_controls(self) -> QtWidgets.QGroupBox:
+            group = QtWidgets.QGroupBox("MANUS→LDJY 中立姿态标定")
+            layout = QtWidgets.QVBoxLayout(group)
+            instructions = QtWidgets.QLabel(
+                "已有标定会按手套 ID 和手侧自动载入；仅在更换手套、拓扑改变或要重设中立姿态时重新采集。"
+            )
+            instructions.setWordWrap(True)
+            layout.addWidget(instructions)
+            self.manus_calibration_button = QtWidgets.QPushButton("重新采集 MANUS 中立姿态")
+            self.manus_calibration_button.clicked.connect(self._start_manus_calibration)
+            layout.addWidget(self.manus_calibration_button)
+            state = "已加载标定" if self.runtime is not None and self.runtime.manus_calibrated else "等待自动载入已有标定"
+            self.manus_calibration_status = QtWidgets.QLabel(state)
+            layout.addWidget(self.manus_calibration_status)
+            return group
+
+        def _create_hybrid_calibration_controls(self) -> QtWidgets.QGroupBox:
+            group = QtWidgets.QGroupBox("MANUS Ergonomics Hybrid 一次标定")
+            layout = QtWidgets.QVBoxLayout(group)
+            label = QtWidgets.QLabel("依次采集：张手、最大张开、握拳、拇指捏食/中/无名/小指。每步保持约 1 秒；保存后会自动加载。")
+            label.setWordWrap(True); layout.addWidget(label)
+            self.hybrid_calibration_button = QtWidgets.QPushButton("开始采集扩展标定")
+            self.hybrid_calibration_button.clicked.connect(self._start_hybrid_calibration)
+            layout.addWidget(self.hybrid_calibration_button)
+            state = "已加载标定" if self.runtime is not None and self.runtime.manus_calibrated else "尚未标定"
+            self.hybrid_calibration_status = QtWidgets.QLabel(state); self.hybrid_calibration_status.setWordWrap(True)
+            layout.addWidget(self.hybrid_calibration_status)
+            return group
+
+        def _start_hybrid_calibration(self) -> None:
+            if self.runtime is None or self.algorithm_key != "manus_ergonomics_hybrid":
+                return
+            sequence = ("open", "spread", "fist", "pinch_finger1", "pinch_finger2", "pinch_finger3", "pinch_finger4")
+            next_index = len(self._hybrid_calibration_poses)
+            if next_index >= len(sequence):
+                self._hybrid_calibration_poses = {}; next_index = 0
+            self._hybrid_calibration_name = sequence[next_index]
+            self._hybrid_calibration_started_at = time.monotonic()
+            self.hybrid_calibration_button.setEnabled(False)
+            self.hybrid_calibration_status.setText(f"采集 {self._hybrid_calibration_name}: 0 / 50")
+
+        def _capture_hybrid_calibration_frame(self, frame: Any) -> None:
+            if self._hybrid_calibration_name is None:
+                return
+            samples = self._hybrid_calibration_poses.setdefault(self._hybrid_calibration_name, [])
+            if samples and frame.sdk_timestamp == samples[-1].sdk_timestamp:
+                return
+            if frame.ergonomics_valid:
+                samples.append(frame)
+            elapsed = time.monotonic() - self._hybrid_calibration_started_at
+            self.hybrid_calibration_status.setText(f"采集 {self._hybrid_calibration_name}: {len(samples)} / 50（{elapsed:.1f} s）")
+            if elapsed < 1.0 or len(samples) < 50:
+                return
+            self._hybrid_calibration_name = None; self._hybrid_calibration_started_at = None
+            if len(self._hybrid_calibration_poses) < 7:
+                self.hybrid_calibration_button.setEnabled(True)
+                self.hybrid_calibration_button.setText("下一姿态")
+                self.hybrid_calibration_status.setText("本步完成；摆好下一姿态后点击“下一姿态”。")
+                return
+            try:
+                path = self.runtime.calibrate_manus_ergonomics(
+                    self._hybrid_calibration_poses, sdk_version=getattr(self.device, "sdk_version", "recorded"))
+                message = f"Ergonomics Hybrid 标定成功: {path}"
+            except Exception as exc:
+                message = f"Ergonomics Hybrid 标定失败: {exc}"
+            self._hybrid_calibration_poses = {}; self.hybrid_calibration_button.setEnabled(True)
+            self.hybrid_calibration_button.setText("重新采集扩展标定")
+            self.hybrid_calibration_status.setText(message); self.status_label.setText(message)
+
+        def _start_manus_calibration(self) -> None:
+            if self.runtime is None or self.input_device_type != "manus":
+                self.status_label.setText("请先应用 MANUS 输入。")
+                return
+            self._manus_calibration_frames = []
+            self._manus_calibration_started_at = time.monotonic()
+            self.manus_calibration_button.setEnabled(False)
+            self.manus_calibration_status.setText("采集中: 0 / 50（0.0 / 2.0 s）")
+
+        def _capture_manus_calibration_frame(self, frame: Any) -> None:
+            if self._manus_calibration_started_at is None:
+                return
+            if self._manus_calibration_frames and frame.sdk_timestamp == self._manus_calibration_frames[-1].sdk_timestamp:
+                return
+            self._manus_calibration_frames.append(frame)
+            elapsed = time.monotonic() - self._manus_calibration_started_at
+            self.manus_calibration_status.setText(
+                f"采集中: {len(self._manus_calibration_frames)} / 50（{elapsed:.1f} / 2.0 s）"
+            )
+            if elapsed < 2.0 or len(self._manus_calibration_frames) < 50:
+                return
+            try:
+                version = getattr(self.device, "sdk_version", "recorded")
+                path = self.runtime.calibrate_manus(self._manus_calibration_frames, sdk_version=version)
+                message = f"标定成功: {path}"
+            except Exception as exc:
+                message = f"标定失败: {exc}"
+            self._manus_calibration_frames = []
+            self._manus_calibration_started_at = None
+            self.manus_calibration_button.setEnabled(True)
+            self.manus_calibration_status.setText(message)
+            self.status_label.setText(message)
 
         def _create_control(self, spec: Any) -> QtWidgets.QWidget:
             container = QtWidgets.QWidget()
@@ -1091,16 +1244,22 @@ def _run_gui(args: argparse.Namespace) -> int:
             if self._recording_requested:
                 self._stop_recording(finish=True)
                 return
+            if (self.input_device_type == "manus" and self.runtime.manus_requires_calibration
+                    and not self.runtime.manus_calibrated):
+                self.status_label.setText("请先完成 MANUS→LDJY 中立姿态标定再录制。")
+                return
             if self.device is not None:
                 # A segment begins at the button press, not at device startup.
-                self.device.drain_inference_samples()
+                self.device.set_recording_enabled(True)
             self._recording_requested = True
+            if hasattr(self, "manus_calibration_button"):
+                self.manus_calibration_button.setEnabled(False)
             self.record_button.setText("停止记录")
             self.status_label.setText("正在等待下一次完整推理后开始记录...")
 
         def _start_writer_for_sample(self, sample) -> None:
             from ldjy_retargeting.tuning.recording import (
-                MediaPipeRecordWriter, QuestHTSRecordWriter, WiLoRRecordWriter,
+                ManusRecordWriter, MediaPipeRecordWriter, QuestHTSRecordWriter, WiLoRRecordWriter,
             )
 
             if sample.input_type == "webcam":
@@ -1116,18 +1275,25 @@ def _run_gui(args: argparse.Namespace) -> int:
                 self._record_writer = WiLoRRecordWriter.start(
                     TUNING_RECORDS_ROOT, hand_side=self.context.hand_side, width=width, height=height, faces=faces
                 )
-            else:
+            elif sample.input_type == "quest_hts":
                 self._record_writer = QuestHTSRecordWriter.start(
                     TUNING_RECORDS_ROOT, hand_side=self.context.hand_side,
+                )
+            else:
+                self._record_writer = ManusRecordWriter.start(
+                    TUNING_RECORDS_ROOT, hand_side=self.context.hand_side,
+                    calibration=(getattr(self.runtime.optimizer, "calibration", None)
+                                 if self.algorithm_key == "manus_full_skeleton" else None),
+                    hybrid_calibration=(getattr(self.runtime.optimizer, "calibration", None)
+                                        if self.algorithm_key == "manus_ergonomics_hybrid" else None),
+                    config=self.session.config,
                 )
             self.status_label.setText(f"正在记录: {self._record_writer._final_path.name}")
 
         def _drain_record_samples(self) -> None:
             if not self._recording_requested or self.device is None:
                 return
-            from ldjy_retargeting.tuning.recording import (
-                QuestHTSRecordSample, RecordSample, WiLoRRecordSample,
-            )
+            from ldjy_retargeting.tuning.recording import QuestHTSRecordSample, RecordSample, WiLoRRecordSample
 
             for sample in self.device.drain_inference_samples():
                 if self._record_writer is None:
@@ -1141,18 +1307,28 @@ def _run_gui(args: argparse.Namespace) -> int:
                     self._record_writer.append(WiLoRRecordSample(
                         sample.timestamp_sec, sample.frame_bgr, sample.detected, sample.payload["detection"]
                     ))
-                else:
+                elif sample.input_type == "quest_hts":
                     self._record_writer.append(QuestHTSRecordSample(
                         sample.timestamp_sec, sample.detected,
                         sample.payload["landmarks_unity_left"], sample.payload["landmarks_rfu"],
                         sample.payload["wrist_position_unity_left"],
                         sample.payload["wrist_quaternion_unity_left"],
                     ))
+                else:
+                    self._record_writer.append(sample.payload["frame"])
 
         def _stop_recording(self, *, finish: bool) -> None:
+            if self.device is not None:
+                self.device.set_recording_enabled(False)
+            if self._recording_requested:
+                self._drain_record_samples()
             if self._record_writer is not None:
                 try:
-                    info = self._record_writer.finish(config=self.session.config) if finish else None
+                    if finish:
+                        info = self._record_writer.finish(config=self.session.config)
+                    else:
+                        self._record_writer.abort()
+                        info = None
                     if info is not None:
                         self.status_label.setText(f"记录已保存: {info.path}")
                 except Exception as exc:
@@ -1161,6 +1337,8 @@ def _run_gui(args: argparse.Namespace) -> int:
             self._recording_requested = False
             if hasattr(self, "record_button"):
                 self.record_button.setText("开始记录")
+            if hasattr(self, "manus_calibration_button"):
+                self.manus_calibration_button.setEnabled(True)
 
         def _pause(self) -> None:
             if self.device is not None:
@@ -1345,7 +1523,31 @@ def _run_gui(args: argparse.Namespace) -> int:
             if elapsed > 0:
                 self._fps = 1.0 / elapsed
             self._last_tick = now
-            if self.input_device_type == "quest_hts":
+            if self.input_device_type == "manus":
+                if self.context.mode is RunMode.LIVE:
+                    status = self.device.glove_status
+                    source = (
+                        f"MANUS glove={status['glove_id']} {status['side']} | "
+                        f"{'connected' if status['connected'] else 'disconnected'} | "
+                        f"电量: {status.get('battery', 'n/a')}% | 信号: {status.get('signal', 'n/a')} | "
+                        f"Raw: {self.device.fps:.1f} FPS"
+                    )
+                    latest = self.device.get_latest_frame()
+                    ergo = f"Ergo: {len(latest.ergonomics)}" if latest is not None and latest.ergonomics_valid else "Ergo: invalid"
+                else:
+                    source = f"MANUS 记录回放 | glove={self.replay.record.glove_id}"
+                    latest = self.replay.input_at(self.replay.current_index)
+                    ergo = f"Ergo: {len(latest.ergonomics)}" if latest.ergonomics_valid else "Ergo: invalid"
+                solve_ms = self.runtime.optimizer.last_diagnostics.get("solve_ms", 0.0)
+                calibrated = "已标定" if self.runtime.manus_calibrated else "未标定"
+                self.camera_status.setText(
+                    f"{source} | {ergo} | GUI: {self._fps:.1f} FPS | 求解: {solve_ms:.1f} ms | {calibrated}"
+                )
+                self.camera_status.setToolTip(
+                    "Ergonomics: " + np.array2string(latest.ergonomics, precision=2, threshold=np.inf)
+                    if latest is not None else "Ergonomics: no frame"
+                )
+            elif self.input_device_type == "quest_hts":
                 if self.context.mode is RunMode.LIVE:
                     connected = self.device.connected
                     input_status = "已连接" if connected else "等待/断开（保持最后姿态）"
@@ -1369,7 +1571,10 @@ def _run_gui(args: argparse.Namespace) -> int:
             if paused:
                 return
 
-            if self.context.mode is RunMode.LIVE:
+            if self.input_device_type == "manus":
+                fingers = (self.device.get_latest_frame() if self.context.mode is RunMode.LIVE
+                           else self.replay.input_at(self.replay.current_index))
+            elif self.context.mode is RunMode.LIVE:
                 fingers = self.device.get_fingers_data()[f"{self.context.hand_side}_fingers"]
             elif self.input_device_type == "webcam":
                 fingers = self.replay.input_at(
@@ -1379,10 +1584,16 @@ def _run_gui(args: argparse.Namespace) -> int:
                 fingers = self.replay.input_at(self.replay.current_index)
             if fingers is None:
                 return
-            if np.allclose(fingers, 0):
+            if self.input_device_type != "manus" and np.allclose(fingers, 0):
                 return
             try:
-                if self.algorithm_key == "mano_pad_pose_wilor":
+                if self.algorithm_key in {"manus_full_skeleton", "manus_ergonomics_hybrid"}:
+                    if self.algorithm_key == "manus_ergonomics_hybrid":
+                        self._capture_hybrid_calibration_frame(fingers)
+                    elif self.runtime.manus_requires_calibration:
+                        self._capture_manus_calibration_frame(fingers)
+                    qpos, diagnostics = self.runtime.process_manus(fingers)
+                elif self.algorithm_key == "mano_pad_pose_wilor":
                     parameters = (
                         self.device.get_mano_parameters()
                         if self.context.mode is RunMode.LIVE
@@ -1394,6 +1605,8 @@ def _run_gui(args: argparse.Namespace) -> int:
                 else:
                     self._capture_calibration_frame(fingers)
                     qpos, diagnostics = self.runtime.process(fingers)
+                if diagnostics.get("failure"):
+                    self.status_label.setText(f"求解失败，保持上一姿态: {diagnostics['failure']}")
                 self.debug_worker.submit(qpos, diagnostics, self.runtime.optimizer)
             except Exception as exc:
                 self.status_label.setText(f"重定向失败: {exc}")

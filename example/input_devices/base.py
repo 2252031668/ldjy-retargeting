@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass
 import threading
 from typing import Any
@@ -19,10 +19,13 @@ class InferenceSample:
 
 
 class InputDeviceBase(ABC):
-    @abstractmethod
     def get_fingers_data(self) -> Dict[str, np.ndarray]:
         """Return a dict with `left_fingers` and `right_fingers` data."""
-        pass
+        raise NotImplementedError("this input does not provide 21-point hand landmarks")
+
+    def get_latest_frame(self) -> Any | None:
+        """Return the latest native frame for inputs that do not use 21 points."""
+        return None
 
     def get_preview_frame(self) -> np.ndarray | None:
         """Return the latest annotated BGR frame when the device supports it."""
@@ -37,8 +40,20 @@ class InputDeviceBase(ABC):
         if not hasattr(self, "_record_sample_lock"):
             self._record_sample_lock = threading.Lock()
             self._record_samples: list[InferenceSample] = []
+            self._recording_enabled = False
         with self._record_sample_lock:
-            self._record_samples.append(sample)
+            if self._recording_enabled:
+                self._record_samples.append(sample)
+
+    def set_recording_enabled(self, enabled: bool) -> None:
+        """Enable sample buffering only for the duration of an active recording."""
+        if not hasattr(self, "_record_sample_lock"):
+            self._record_sample_lock = threading.Lock()
+            self._record_samples = []
+        with self._record_sample_lock:
+            self._recording_enabled = bool(enabled)
+            if enabled:
+                self._record_samples = []
 
     def drain_inference_samples(self) -> list[InferenceSample]:
         """Return completed samples in inference completion order."""

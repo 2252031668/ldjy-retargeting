@@ -11,9 +11,11 @@ import numpy as np
 
 from .recording import (
     MediaPipeRecord,
+    ManusRecord,
     QuestHTSRecord,
     WiLoRRecord,
     load_mediapipe_record,
+    load_manus_record,
     load_quest_hts_record,
     load_wilor_record,
 )
@@ -209,4 +211,49 @@ class QuestHTSReplay:
         pass
 
 
-__all__ = ["MediaPipeReplay", "QuestHTSReplay", "ReplayCursor", "WiLoRReplay"]
+class ManusReplay:
+    """Replay native MANUS frames without importing the proprietary SDK."""
+
+    def __init__(self, record: str | Path | ManusRecord) -> None:
+        self.record = load_manus_record(record) if not isinstance(record, ManusRecord) else record
+        self.path = self.record.info.path
+        self.cursor = ReplayCursor(self.record.timestamp_sec)
+
+    @property
+    def current_index(self) -> int:
+        return self.cursor.index
+
+    @property
+    def hand_side(self) -> str:
+        return self.record.info.hand_side
+
+    def input_at(self, index: int):
+        from ldjy_retargeting.manus import ManusFrame
+
+        i = int(np.clip(index, 0, self.record.frame_count - 1))
+        return ManusFrame(
+            float(self.record.local_timestamp_sec[i]), int(self.record.sdk_timestamp[i]),
+            self.record.glove_id, self.hand_side, self.record.positions[i], self.record.rotations[i],
+            self.record.scales[i], self.record.topology, self.record.ergonomics[i],
+            int(self.record.ergonomics_timestamp[i]), bool(self.record.ergonomics_valid[i]),
+        )
+
+    def calibration(self):
+        from ldjy_retargeting.manus import ManusCalibration
+        path = self.path / "calibration_snapshot.npz"
+        return ManusCalibration.load(path) if path.is_file() else None
+
+    def ergonomics_hybrid_calibration(self):
+        from ldjy_retargeting.manus import ManusErgonomicsCalibration
+        path = self.path / "ergonomics_hybrid_calibration_snapshot.npz"
+        return ManusErgonomicsCalibration.load(path) if path.is_file() else None
+
+    def preview_at(self, index: int) -> None:
+        del index
+        return None
+
+    def close(self) -> None:
+        pass
+
+
+__all__ = ["ManusReplay", "MediaPipeReplay", "QuestHTSReplay", "ReplayCursor", "WiLoRReplay"]

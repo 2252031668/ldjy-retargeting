@@ -67,6 +67,10 @@ class TuningSession:
             )
         self._config = self._load_yaml(self.original_path)
 
+    def load_snapshot(self, path: str | Path) -> None:
+        """Replace only in-memory values from a recording snapshot."""
+        self._config = self._load_yaml(Path(path))
+
     def save(self) -> None:
         validate_runtime_config(self._config)
         if not self.original_path.exists():

@@ -73,6 +73,24 @@ _DEFAULT_PAD_IK = {
     "thumb_contact_surface_weight": 300.0,
     "pinch_position_weight_scale": 0.25,
 }
+_DEFAULT_MANUS = {
+    "position_scale_m": 0.01,
+    "direction_scale": 0.1,
+    "rotation_scale_deg": 10.0,
+    "position_weight": 1.0,
+    "direction_weight": 0.5,
+    "rotation_weight": 0.5,
+    "temporal_scale_rad": 0.1,
+    "temporal_weight": 0.05,
+    "zero_weight": 0.001,
+    "max_nfev": 30,
+    "lp_alpha": 0.15,
+}
+_DEFAULT_MANUS_ERGONOMICS = {
+    "position_scale_m": 0.01, "tip_position_weight": 3.0, "pad_position_weight": 3.0,
+    "direction_weight": 0.5, "ergonomics_prior_weight": 0.1, "temporal_scale_rad": 0.1,
+    "temporal_weight": 0.05, "zero_weight": 0.001, "max_nfev": 30, "lp_alpha": 0.15,
+}
 
 def _spec(
     path: str,
@@ -223,6 +241,38 @@ def pad_parameter_specs() -> tuple[ParameterSpec, ...]:
     return tuple(specs)
 
 
+def manus_parameter_specs() -> tuple[ParameterSpec, ...]:
+    """Controls for the native MANUS full-skeleton objective."""
+    group = "MANUS 全骨架"
+    return (
+        _spec("retarget.position_scale_m", group, "位置尺度 (m)", "位置残差归一化尺度。", "越小越严格。", minimum=.001, maximum=.05, step=.001),
+        _spec("retarget.direction_scale", group, "方向尺度", "骨段单位方向残差尺度。", "越小越严格。", minimum=.01, maximum=1., step=.01),
+        _spec("retarget.rotation_scale_deg", group, "旋转尺度 (度)", "SO(3) 旋转残差尺度。", "越小越严格。", minimum=1., maximum=90., step=1.),
+        _spec("retarget.position_weight", group, "位置权重", "全节点位置权重。", "增大后优先追踪节点。", minimum=0., maximum=10., step=.05),
+        _spec("retarget.direction_weight", group, "骨段方向权重", "父子骨段方向权重。", "增大后优先保持指节方向。", minimum=0., maximum=10., step=.05),
+        _spec("retarget.rotation_weight", group, "旋转权重", "节点 SO(3) 旋转权重。", "增大后优先追踪节点朝向。", minimum=0., maximum=10., step=.05),
+        _spec("retarget.temporal_scale_rad", group, "帧间尺度 (rad)", "帧间 qpos 残差尺度。", "越小越平滑。", minimum=.01, maximum=1., step=.01),
+        _spec("retarget.temporal_weight", group, "帧间权重", "相邻帧 qpos 残差权重。", "增大后更稳定但延迟更高。", minimum=0., maximum=2., step=.01),
+        _spec("retarget.zero_weight", group, "零位正则", "机器人零位弱正则。", "增大后更偏好零位。", minimum=0., maximum=.1, step=.001),
+        _spec("retarget.max_nfev", group, "最大评估次数", "单帧最大函数评估次数。", "增大可改善收敛但更慢。", int, 1, 100, 1),
+        _spec("retarget.lp_alpha", group, "低通系数", "输出 qpos 低通系数。", "减小后更平滑但延迟更高。", minimum=.01, maximum=1., step=.01),
+    )
+
+
+def manus_ergonomics_parameter_specs() -> tuple[ParameterSpec, ...]:
+    group = "MANUS Ergonomics Hybrid"
+    return (
+        _spec("retarget.position_scale_m", group, "位置尺度 (m)", "拇指/小指任务位置残差尺度。", "越小越严格。", minimum=.001, maximum=.05, step=.001),
+        _spec("retarget.tip_position_weight", group, "Tip 权重", "拇指与小指 tip 位置权重。", "增大后更贴近 Raw 目标。", minimum=0., maximum=10., step=.05),
+        _spec("retarget.pad_position_weight", group, "Pad 权重", "拇指与小指指腹位置权重。", "增大后更优先捏合接触。", minimum=0., maximum=10., step=.05),
+        _spec("retarget.direction_weight", group, "方向权重", "拇指/小指末段方向权重。", "增大后更贴近骨段方向。", minimum=0., maximum=10., step=.05),
+        _spec("retarget.ergonomics_prior_weight", group, "特殊指 Ergonomics 先验", "拇指/小指官方角度的低权重先验。", "增大后更偏向官方关节角，不覆盖任务 IK。", minimum=0., maximum=2., step=.01),
+        _spec("retarget.temporal_weight", group, "帧间权重", "拇指/小指相邻帧平滑。", "增大后更稳定但更慢。", minimum=0., maximum=2., step=.01),
+        _spec("retarget.max_nfev", group, "最大评估次数", "特殊 8 DoF 每帧最大函数评估次数。", "增大可改善收敛但更慢。", int, 1, 100, 1),
+        _spec("retarget.lp_alpha", group, "低通系数", "完整 qpos 输出低通系数。", "减小后更平滑但延迟更高。", minimum=.01, maximum=1., step=.01),
+    )
+
+
 def _parts(path: str) -> list[str]:
     parts = path.split(".")
     if not parts or any(not part for part in parts):
@@ -303,6 +353,16 @@ def normalize_runtime_config(config: dict[str, Any]) -> dict[str, Any]:
     retarget = config.setdefault("retarget", {})
     if not isinstance(retarget, dict):
         raise ValueError("retarget must be a mapping")
+    if optimizer.get("type") in {"ManusFullSkeletonRetargeter", "ManusErgonomicsHybridRetargeter"}:
+        defaults = {"ManusFullSkeletonRetargeter": _DEFAULT_MANUS,
+                    "ManusErgonomicsHybridRetargeter": _DEFAULT_MANUS_ERGONOMICS}[optimizer["type"]]
+        _merge_defaults(retarget, defaults)
+        tip_offsets = config.setdefault("tip_offsets", {})
+        if not isinstance(tip_offsets, dict):
+            raise ValueError("tip_offsets must be a mapping")
+        _merge_defaults(tip_offsets, _DEFAULT_TIP_OFFSETS)
+        config["tip_offsets"] = normalize_tip_offsets(tip_offsets)
+        return config
     # Legacy global TipPos scaling conflicts with the calibrated TIP entry in
     # segment_scaling. Drop it on load so a subsequent save migrates the YAML.
     retarget.pop("scaling", None)
@@ -335,6 +395,18 @@ def normalize_runtime_config(config: dict[str, Any]) -> dict[str, Any]:
 def validate_runtime_config(config: dict[str, Any]) -> None:
     """Reject invalid values before they reach the live retargeter or disk."""
     normalize_runtime_config(config)
+    if config["optimizer"].get("type") in {"ManusFullSkeletonRetargeter", "ManusErgonomicsHybridRetargeter"}:
+        specs_for_type = {"ManusFullSkeletonRetargeter": manus_parameter_specs,
+                          "ManusErgonomicsHybridRetargeter": manus_ergonomics_parameter_specs}[config["optimizer"]["type"]]
+        for spec in specs_for_type():
+            value = get_path(config, spec.path)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value):
+                raise ValueError(f"{spec.path} must be a finite number")
+            if spec.minimum is not None and value < spec.minimum:
+                raise ValueError(f"{spec.path} must be >= {spec.minimum}")
+            if spec.maximum is not None and value > spec.maximum:
+                raise ValueError(f"{spec.path} must be <= {spec.maximum}")
+        return
     specs = {spec.path: spec for spec in parameter_specs()}
     for path, spec in specs.items():
         value = get_path(config, path)
@@ -365,6 +437,8 @@ __all__ = [
     "ParameterSpec",
     "get_path",
     "normalize_runtime_config",
+    "manus_ergonomics_parameter_specs",
+    "manus_parameter_specs",
     "parameter_specs",
     "set_path",
     "validate_runtime_config",

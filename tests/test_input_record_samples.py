@@ -22,6 +22,7 @@ class InputRecordSampleTests(unittest.TestCase):
                 return {}
 
         device = Device()
+        device.set_recording_enabled(True)
         device.publish_inference_sample(InferenceSample(
             timestamp_sec=0.0, frame_bgr=np.zeros((2, 2, 3), dtype=np.uint8),
             input_type="webcam", hand_side="right", detected=False, payload={},
@@ -32,6 +33,20 @@ class InputRecordSampleTests(unittest.TestCase):
         ))
         samples = device.drain_inference_samples()
         self.assertEqual([sample.timestamp_sec for sample in samples], [0.0, 0.1])
+        self.assertEqual(device.drain_inference_samples(), [])
+
+    def test_base_queue_is_disabled_outside_recording(self):
+        from input_devices.base import InferenceSample, InputDeviceBase
+
+        device = InputDeviceBase()
+        sample = InferenceSample(0.0, None, "manus", "right", True, {})
+        device.publish_inference_sample(sample)
+        self.assertEqual(device.drain_inference_samples(), [])
+        device.set_recording_enabled(True)
+        device.publish_inference_sample(sample)
+        self.assertEqual(len(device.drain_inference_samples()), 1)
+        device.set_recording_enabled(False)
+        device.publish_inference_sample(sample)
         self.assertEqual(device.drain_inference_samples(), [])
 
     def test_wilor_selected_detection_becomes_a_record_sample(self):

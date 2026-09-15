@@ -16,10 +16,21 @@ Example:
 from .retarget import Retargeter
 from .opt import BaseOptimizer, LPFilter
 from .mediapipe import apply_mediapipe_transformations
+from .manus import (
+    ManusCalibration, ManusErgonomicsCalibration, ManusErgonomicsHybridRetargeter, ManusFrame,
+    ManusFullSkeletonRetargeter,
+    ManusTopology,
+)
 
 __all__ = [
     "Retargeter",
     "BaseOptimizer",
     "LPFilter",
     "apply_mediapipe_transformations",
+    "ManusCalibration",
+    "ManusErgonomicsCalibration",
+    "ManusErgonomicsHybridRetargeter",
+    "ManusFrame",
+    "ManusFullSkeletonRetargeter",
+    "ManusTopology",
 ]
