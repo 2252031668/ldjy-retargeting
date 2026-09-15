@@ -149,10 +149,12 @@ uv run --no-sync python example/tuning_gui.py --manus --hand right
 
 | 算法 | 数据与求解 | 首次使用所需项目标定 |
 | --- | --- | --- |
-| `MANUS Full Skeleton` | 完整 Raw Skeleton 的节点位置、方向和旋转进入 20 DoF 有界 IK | 自然张手稳定约 2 秒，采集一次中立姿态 |
-| `MANUS Ergonomics Hybrid` | 食/中/无名指使用官方 Ergonomics；拇指/小指使用 Raw Skeleton 任务空间 IK | 依次采集张手、最大张开、握拳和四种拇指捏合 |
+| `MANUS Full Skeleton` | 完整 Raw Skeleton 的节点位置、方向和旋转进入 20 DoF 有界 IK | 采集一次 LDJY 共用零位 |
+| `MANUS Ergonomics Hybrid` | 食/中/无名指的官方 Ergonomics 减去共用零位后转弧度并裁剪到 URDF 限位；拇指/小指使用 Raw Skeleton 任务空间 IK | 自动复用共用零位；旧标定缺少 Ergonomics 零位时保持直接官方角度 |
 
-这些项目标定与 MANUS 官方 `.mcal` 不同：`.mcal` 校准“手套传感器 → 人手状态”；项目 NPZ 校准“MANUS 输出 → LDJY 构型”。它们会按手套 ID、手侧和机器人 URDF 指纹自动加载：
+点击 GUI 的“采集 LDJY 共用零位”后，检测区会显示 LDJY 零位参考图。将手平放在桌上，摆成相同的自然张开姿势并稳定约 2 秒；同一批帧同时保存 Raw Skeleton 的空间对齐和 20 维 Ergonomics 零位。它不需要旧版的“张手、最大张开、握拳和四种捏合”七动作流程。
+
+这些项目标定与 MANUS 官方 `.mcal` 不同：`.mcal` 校准“手套传感器 → 人手状态”；项目 NPZ 校准“MANUS 输出 → LDJY 构型”。它们按手套 ID 和手侧自动加载：
 
 ```text
 outputs/manus_calibrations/<glove_id>_<side>.npz

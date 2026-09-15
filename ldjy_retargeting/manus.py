@@ -176,6 +176,7 @@ class ManusCalibration:
     alignment: np.ndarray
     rotation_offsets: np.ndarray
     sdk_version: str = "unknown"
+    ergonomics_zero_degrees: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         if self.side not in {"left", "right"} or self.glove_id < 0:
@@ -197,6 +198,10 @@ class ManusCalibration:
             raise ValueError("MANUS calibration arrays must be finite")
         if not np.allclose(self.alignment.T @ self.alignment, np.eye(3), atol=1e-5) or np.linalg.det(self.alignment) < 0:
             raise ValueError("MANUS calibration alignment must be a proper rotation")
+        if self.ergonomics_zero_degrees is not None:
+            object.__setattr__(self, "ergonomics_zero_degrees", _array(
+                self.ergonomics_zero_degrees, np.float64, (20,), "ergonomics_zero_degrees"
+            ))
 
     def matches(self, frame: ManusFrame) -> bool:
         return self.glove_id == frame.glove_id and self.side == frame.side and self.topology.matches(frame.topology)
@@ -216,7 +221,7 @@ class ManusCalibration:
         return path
 
     def as_arrays(self) -> dict[str, np.ndarray]:
-        return {
+        result = {
             "schema": np.array(CALIBRATION_SCHEMA), "sdk_version": np.array(self.sdk_version),
             "glove_id": np.array(self.glove_id, dtype=np.uint32), "side": np.array(self.side),
             "node_ids": self.topology.node_ids, "parent_ids": self.topology.parent_ids,
@@ -226,6 +231,9 @@ class ManusCalibration:
             "reference_rotations": self.reference_rotations,
             "alignment": self.alignment, "rotation_offsets": self.rotation_offsets,
         }
+        if self.ergonomics_zero_degrees is not None:
+            result["ergonomics_zero_degrees"] = self.ergonomics_zero_degrees
+        return result
 
     @classmethod
     def load(cls, path: str | Path) -> "ManusCalibration":
@@ -237,7 +245,8 @@ class ManusCalibration:
             )))
             return cls(int(a["glove_id"]), str(a["side"]), topology,
                        a["reference_positions"], a["reference_rotations"], a["alignment"],
-                       a["rotation_offsets"], str(a["sdk_version"]))
+                       a["rotation_offsets"], str(a["sdk_version"]),
+                       a["ergonomics_zero_degrees"] if "ergonomics_zero_degrees" in a else None)
 
 
 @dataclass(frozen=True)
@@ -440,9 +449,17 @@ class ManusFullSkeletonRetargeter:
         for mapped, source_index in enumerate(self._frame_indices):
             transformed = alignment @ reference_matrices[source_index] @ alignment.T
             offsets[source_index] = transformed.T @ self._robot_zero_rotations[mapped]
+        ergonomics_zero = None
+        if all(frame.ergonomics_valid and len(frame.ergonomics) == 40 for frame in frames):
+            indices = ergonomics_indices(first.side)
+            ergonomics_zero = np.median(np.stack([
+                np.concatenate([frame.ergonomics[indices[finger]] for finger in ERGONOMICS_FINGERS])
+                for frame in frames
+            ]), axis=0)
         calibration = ManusCalibration(
             first.glove_id, first.side, first.topology, reference_positions,
             reference_quaternions, alignment, offsets, sdk_version,
+            ergonomics_zero,
         )
         self.calibration = calibration
         return calibration
@@ -681,10 +698,7 @@ class ManusFullSkeletonRetargeter:
 
 
 class ManusErgonomicsHybridRetargeter:
-    """Official Ergonomics for central fingers plus Raw-Skeleton IK for thumb/pinky."""
-
-    direct_indices = np.arange(12)
-    special_indices = np.arange(12, 20)
+    """Direct official Ergonomics for three fingers plus Raw-Skeleton IK for thumb/pinky."""
 
     def __init__(self, config: dict[str, Any]):
         optimizer, cfg = config["optimizer"], config.get("retarget", {})
@@ -703,71 +717,44 @@ class ManusErgonomicsHybridRetargeter:
         self.zero_weight = float(cfg.get("zero_weight", .001))
         self.max_nfev = int(cfg.get("max_nfev", 30))
         self.filter = LPFilter(float(cfg.get("lp_alpha", .15)))
-        self.calibration: ManusErgonomicsCalibration | None = None
         self.last_qpos: np.ndarray | None = None
         self.last_diagnostics: dict[str, Any] = {}
+        self.raw_calibration: ManusCalibration | None = None
+        self.ergonomics_zero_degrees: np.ndarray | None = None
+        self._raw_target_builder = ManusFullSkeletonRetargeter(config)
         self._ids = {name: self.robot.get_link_index(name) for name in (
             "retarget_wrist", "thumb_link4", "thumb_tip", "thumb_pad", "finger4_link3", "finger4_link4",
             "finger4_tip", "finger4_pad", "finger1_tip", "finger2_tip", "finger3_tip",
             "finger1_pad", "finger2_pad", "finger3_pad")}
+        self._qpos_indices = {
+            finger: np.asarray([
+                self.robot.get_actuated_qpos_index(f"{finger}_link{joint}")
+                for joint in range(1, 5)
+            ])
+            for finger in ERGONOMICS_FINGERS
+        }
+        self._direct_qpos_indices = np.concatenate([
+            self._qpos_indices[finger] for finger in DIRECT_ERGONOMICS_FINGERS
+        ])
+        self._special_qpos_indices = np.concatenate([
+            self._qpos_indices["finger4"], self._qpos_indices["thumb"]
+        ])
         self._zero_positions = self._positions(np.zeros(self.num_joints))
 
     def reset(self) -> None:
         self.last_qpos = None; self.filter.reset()
 
-    def set_calibration(self, calibration: ManusErgonomicsCalibration) -> None:
-        if calibration.side != self.hand_side or calibration.urdf_fingerprint != self.urdf_fingerprint:
-            raise ValueError("MANUS Ergonomics calibration does not match current hand/URDF")
-        self.calibration = calibration; self.reset()
-
-    @staticmethod
-    def _stable_pose(frames: Iterable[ManusFrame]) -> ManusFrame:
-        values = list(frames)
-        if len(values) < 50 or len({f.sdk_timestamp for f in values}) < 50:
-            raise ValueError("each Ergonomics calibration pose needs 50 unique frames")
-        first = values[0]
-        if any(not f.ergonomics_valid or f.glove_id != first.glove_id or f.side != first.side for f in values):
-            raise ValueError("Ergonomics calibration samples must be valid and from one glove/side")
-        return values[len(values) // 2]
-
-    def calibrate(self, poses: dict[str, Iterable[ManusFrame]], *, sdk_version: str = "unknown") -> ManusErgonomicsCalibration:
-        required = ("open", "spread", "fist", "pinch_finger1", "pinch_finger2", "pinch_finger3", "pinch_finger4")
-        if set(required) - set(poses):
-            raise ValueError("missing Ergonomics calibration poses")
-        samples = {name: self._stable_pose(poses[name]) for name in required}
-        first = samples["open"]
-        if any(f.glove_id != first.glove_id or f.side != first.side for f in samples.values()):
-            raise ValueError("Ergonomics calibration poses must use one glove/side")
-        idx = ergonomics_indices(self.hand_side)
-        def angles(frame: ManusFrame, fingers: tuple[str, ...]) -> np.ndarray:
-            return np.concatenate([frame.ergonomics[idx[f]] for f in fingers])
-        open_all = angles(first, ERGONOMICS_FINGERS)
-        direct_open, direct_spread, direct_fist = (angles(samples[name], DIRECT_ERGONOMICS_FINGERS)
-                                                   for name in ("open", "spread", "fist"))
-        target = np.zeros(12)
-        for finger in range(3):
-            base = 4 * finger
-            target[base] = .75 * (self.limits[base, 1] if direct_spread[base] >= direct_open[base] else self.limits[base, 0])
-            target[base + 1:base + 4] = .8 * self.limits[base + 1:base + 4, 1]
-        reference = direct_spread.copy()
-        reference.reshape(3, 4)[:, 1:] = direct_fist.reshape(3, 4)[:, 1:]
-        delta = np.deg2rad(reference - direct_open)
-        if np.any(np.abs(delta) < np.deg2rad(3)):
-            raise ValueError("spread/fist movement is too small; please repeat the pose")
-        gain = target / delta; offset = np.zeros(12)
-        special_open = np.concatenate([first.ergonomics[idx["thumb"]], first.ergonomics[idx["finger4"]]])
-        special_ref = np.concatenate([samples["fist"].ergonomics[idx["thumb"]], samples["fist"].ergonomics[idx["finger4"]]])
-        special_target = .55 * self.limits[12:20, 1]
-        special_delta = np.deg2rad(special_ref - special_open)
-        special_gain = special_target / np.where(np.abs(special_delta) >= np.deg2rad(3), special_delta, np.deg2rad(3))
-        distances = []
-        for finger in ("finger1", "finger2", "finger3", "finger4"):
-            raw = self._raw_targets(samples[f"pinch_{finger}"])
-            distances.append(np.linalg.norm(raw["thumb_tip"] - raw[f"{finger}_tip"]))
-        result = ManusErgonomicsCalibration(first.glove_id, self.hand_side, self.urdf_fingerprint,
-            open_all, gain, offset, special_gain, np.zeros(8), np.maximum(distances, .002), sdk_version)
-        self.set_calibration(result)
-        return result
+    def set_raw_calibration(self, calibration: ManusCalibration) -> None:
+        """Use the proven Raw Full coordinate alignment for the two IK fingers."""
+        if calibration.side != self.hand_side:
+            raise ValueError("MANUS Raw Full calibration hand side does not match Hybrid runtime")
+        self._raw_target_builder.set_calibration(calibration)
+        self.raw_calibration = calibration
+        self.ergonomics_zero_degrees = (
+            None if calibration.ergonomics_zero_degrees is None
+            else calibration.ergonomics_zero_degrees.copy()
+        )
+        self.reset()
 
     def _positions(self, qpos: np.ndarray) -> dict[str, np.ndarray]:
         pin.forwardKinematics(self.robot.model, self.robot.data, qpos); pin.updateFramePlacements(self.robot.model, self.robot.data)
@@ -776,54 +763,55 @@ class ManusErgonomicsHybridRetargeter:
                 for name, index in self._ids.items()}
 
     def _raw_targets(self, frame: ManusFrame) -> dict[str, np.ndarray]:
-        local, _, root = wrist_local(frame)
-        semantic = {semantic_frame_name(int(chain), int(joint)): i for i, (chain, joint) in
-                    enumerate(zip(frame.topology.chain_types, frame.topology.finger_joint_types))}
+        if self.raw_calibration is None:
+            raise RuntimeError("MANUS Ergonomics Hybrid 需要已保存的 MANUS Raw Full 中立标定")
+        targets, _, _ = self._raw_target_builder._targets(frame)
+        semantic = {
+            semantic_frame_name(
+                int(self.raw_calibration.topology.chain_types[source]),
+                int(self.raw_calibration.topology.finger_joint_types[source]),
+            ): targets[mapped]
+            for mapped, source in enumerate(self._raw_target_builder._frame_indices)
+        }
         needed = ("thumb_tip", "thumb_link4", "finger4_tip", "finger4_link3", "finger4_link4",
                   "finger1_link1", "finger2_link1", "finger3_link1", "finger1_tip", "finger2_tip", "finger3_tip")
         if any(name not in semantic for name in needed):
             raise ValueError("Raw Skeleton lacks the nodes needed by Ergonomics Hybrid")
-        source_forward = local[semantic["finger2_link1"]]
-        source_lateral = local[semantic["finger3_link1"]] - local[semantic["finger1_link1"]]
-        source_forward /= max(np.linalg.norm(source_forward), 1e-12); source_lateral /= max(np.linalg.norm(source_lateral), 1e-12)
-        source_normal = np.cross(source_lateral, source_forward); source_normal /= max(np.linalg.norm(source_normal), 1e-12)
-        source_lateral = np.cross(source_forward, source_normal)
-        robot_forward = self._zero_positions["finger2_tip"]
-        robot_lateral = self._zero_positions["finger3_tip"] - self._zero_positions["finger1_tip"]
-        robot_forward /= max(np.linalg.norm(robot_forward), 1e-12); robot_lateral /= max(np.linalg.norm(robot_lateral), 1e-12)
-        robot_normal = np.cross(robot_lateral, robot_forward); robot_normal /= max(np.linalg.norm(robot_normal), 1e-12)
-        robot_lateral = np.cross(robot_forward, robot_normal)
-        transform = np.stack((robot_lateral, robot_forward, robot_normal), axis=1) @ np.stack((source_lateral, source_forward, source_normal), axis=1).T
-        pairs = [("finger1", "finger1_tip"), ("finger2", "finger2_tip"), ("finger3", "finger3_tip")]
-        scale = np.median([np.linalg.norm(self._zero_positions[target])
-                           / max(np.linalg.norm(local[semantic[target]] - local[semantic[f"{name}_link1"]]), 1e-9)
-                           for name, target in pairs])
-        return {name: scale * transform @ local[index] for name, index in semantic.items() if name in needed}
+        return {name: semantic[name].copy() for name in needed}
 
     def solve(self, frame: ManusFrame) -> tuple[np.ndarray, dict[str, Any]]:
         start = time.perf_counter()
-        calibration = self.calibration
-        if calibration is None:
-            raise RuntimeError("尚未采集 MANUS Ergonomics Hybrid 标定")
-        if not calibration.matches(frame, self.urdf_fingerprint):
-            raise ValueError("MANUS Ergonomics Hybrid 标定与当前手套/URDF 不匹配")
         if not frame.ergonomics_valid or len(frame.ergonomics) != 40:
             raise ValueError("MANUS Ergonomics 无效或不是 40 维")
         indices = ergonomics_indices(self.hand_side)
         direct = np.concatenate([frame.ergonomics[indices[name]] for name in DIRECT_ERGONOMICS_FINGERS])
-        special = np.concatenate([frame.ergonomics[indices["thumb"]], frame.ergonomics[indices["finger4"]]])
+        special = np.concatenate([frame.ergonomics[indices["finger4"]], frame.ergonomics[indices["thumb"]]])
+        if self.ergonomics_zero_degrees is None:
+            direct_zero, special_zero = np.zeros(12), np.zeros(8)
+        else:
+            zero = self.ergonomics_zero_degrees.reshape(5, 4)
+            direct_zero = zero[1:4].ravel()
+            special_zero = np.concatenate((zero[4], zero[0]))
         base = np.zeros(self.num_joints)
-        base[:12] = np.clip(calibration.direct_offset + calibration.direct_gain * np.deg2rad(
-            direct - calibration.open_degrees[4:16]), self.limits[:12, 0], self.limits[:12, 1])
-        prior = np.clip(calibration.special_offset + calibration.special_gain * np.deg2rad(
-            special - np.concatenate((calibration.open_degrees[:4], calibration.open_degrees[16:20]))),
-            self.limits[12:20, 0], self.limits[12:20, 1])
+        base[self._direct_qpos_indices] = np.clip(
+            np.deg2rad(direct - direct_zero),
+            self.limits[self._direct_qpos_indices, 0], self.limits[self._direct_qpos_indices, 1],
+        )
+        prior = np.clip(
+            np.deg2rad(special - special_zero),
+            self.limits[self._special_qpos_indices, 0], self.limits[self._special_qpos_indices, 1],
+        )
         raw = self._raw_targets(frame)
         previous = base.copy() if self.last_qpos is None else self.last_qpos.copy()
-        initial = np.clip(previous[12:20], self.limits[12:20, 0], self.limits[12:20, 1])
+        if self.last_qpos is None:
+            previous[self._special_qpos_indices] = prior
+        initial = np.clip(
+            previous[self._special_qpos_indices],
+            self.limits[self._special_qpos_indices, 0], self.limits[self._special_qpos_indices, 1],
+        )
 
         def residual(x: np.ndarray) -> np.ndarray:
-            q = base.copy(); q[12:20] = x
+            q = base.copy(); q[self._special_qpos_indices] = x
             actual = self._positions(q)
             values = [self.tip_weight / self.position_scale * (actual["thumb_tip"] - raw["thumb_tip"]),
                       self.tip_weight / self.position_scale * (actual["finger4_tip"] - raw["finger4_tip"]),
@@ -835,34 +823,42 @@ class ManusErgonomicsHybridRetargeter:
                 a = actual[actual_a] - actual[actual_b]; b = raw[raw_a] - raw[raw_b]
                 values.append(self.direction_weight * (a / max(np.linalg.norm(a), 1e-12) - b / max(np.linalg.norm(b), 1e-12)))
             for i, finger in enumerate(("finger1", "finger2", "finger3", "finger4")):
-                target = min(np.linalg.norm(raw["thumb_tip"] - raw[f"{finger}_tip"]), calibration.pinch_distances_m[i])
+                target = np.linalg.norm(raw["thumb_tip"] - raw[f"{finger}_tip"])
                 if target < .04:
                     values.append(2.0 * (np.linalg.norm(actual["thumb_pad"] - actual[f"{finger}_pad"] if finger != "finger4" else actual["finger4_pad"]) - target) / self.position_scale)
-            values.extend((self.prior_weight * (x - prior), self.temporal_weight / self.temporal_scale * (x - previous[12:20]), self.zero_weight * x))
+            values.extend((self.prior_weight * (x - prior), self.temporal_weight / self.temporal_scale * (x - previous[self._special_qpos_indices]), self.zero_weight * x))
             return np.concatenate([np.atleast_1d(value).ravel() for value in values])
 
         failure = None
         try:
-            result = least_squares(residual, initial, bounds=(self.limits[12:20, 0], self.limits[12:20, 1]),
+            result = least_squares(
+                residual, initial,
+                bounds=(self.limits[self._special_qpos_indices, 0], self.limits[self._special_qpos_indices, 1]),
                                    loss="huber", f_scale=1.0, max_nfev=self.max_nfev)
-            if not result.success or not np.isfinite(result.x).all():
-                failure, solution = result.message, previous[12:20]
+            if not np.isfinite(result.x).all():
+                failure, solution = result.message, previous[self._special_qpos_indices]
             else:
                 solution = result.x
+                convergence_warning = None if result.success else result.message
         except Exception as exc:
-            result, failure, solution = None, str(exc), previous[12:20]
-        qpos = base.copy(); qpos[12:20] = solution
-        filtered = np.clip(self.filter.next(qpos), self.limits[:, 0], self.limits[:, 1])
+            result, failure, solution = None, str(exc), previous[self._special_qpos_indices]
+        qpos = base.copy(); qpos[self._special_qpos_indices] = solution
+        filtered = qpos.copy()
+        filtered[self._special_qpos_indices] = np.clip(
+            self.filter.next(solution),
+            self.limits[self._special_qpos_indices, 0], self.limits[self._special_qpos_indices, 1],
+        )
         if failure is None:
             self.last_qpos = filtered.copy()
         actual = self._positions(filtered)
         diagnostics = {"qpos": filtered.copy(), "failure": failure, "solve_ms": (time.perf_counter() - start) * 1000,
                        "nfev": 0 if result is None else int(result.nfev), "manus_ergonomics": frame.ergonomics.copy(),
-                       "ergonomics_direct_degrees": direct, "ergonomics_direct_qpos": base[:12].copy(),
+                       "convergence_warning": convergence_warning,
+                       "ergonomics_direct_degrees": direct, "ergonomics_direct_qpos": base[self._direct_qpos_indices].copy(),
+                       "ergonomics_zero_degrees": None if self.ergonomics_zero_degrees is None else self.ergonomics_zero_degrees.copy(),
                        "ergonomics_special_prior": prior, "pad_targets_m": np.stack((raw["thumb_tip"], raw["finger4_tip"])),
                        "pad_actual_m": np.stack((actual["thumb_pad"], actual["finger4_pad"])),
-                       "manus_hybrid_raw_targets_m": np.stack((raw["thumb_tip"], raw["finger4_tip"])),
-                       "manus_hybrid_pinch_distances_m": calibration.pinch_distances_m.copy()}
+                       "manus_hybrid_raw_targets_m": np.stack((raw["thumb_tip"], raw["finger4_tip"]))}
         self.last_diagnostics = diagnostics
         return filtered, diagnostics
 

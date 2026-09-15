@@ -24,6 +24,7 @@ DEBUG_CONTROL_HZ = 120
 INPUT_DEVICE_TYPES = ("webcam", "webcam_wilor", "quest_hts", "manus")
 MEDIAPIPE_ONLY_PARAMETER_PREFIX = "video_input."
 TUNING_RECORDS_ROOT = PROJECT_ROOT / "outputs" / "tuning_records"
+LDJY_ZERO_POSE_IMAGE = PROJECT_ROOT / "assets" / "ldjy-zero-pose.png"
 
 
 class RunMode(str, Enum):
@@ -440,9 +441,6 @@ def _run_gui(args: argparse.Namespace) -> int:
             self._calibration_timeout_seconds = 3.0
             self._manus_calibration_frames = []
             self._manus_calibration_started_at: float | None = None
-            self._hybrid_calibration_poses: dict[str, list[Any]] = {}
-            self._hybrid_calibration_name: str | None = None
-            self._hybrid_calibration_started_at: float | None = None
             self._mano_overlay_sequence: object | None = None
             self._mano_overlay_frame: np.ndarray | None = None
 
@@ -829,7 +827,10 @@ def _run_gui(args: argparse.Namespace) -> int:
                     calibration = (candidate_replay.ergonomics_hybrid_calibration()
                                    if choice.key == "manus_ergonomics_hybrid" else candidate_replay.calibration())
                     if calibration is not None:
-                        candidate_runtime.optimizer.set_calibration(calibration)
+                        if choice.key == "manus_ergonomics_hybrid":
+                            candidate_runtime.optimizer.set_raw_calibration(calibration)
+                        elif candidate_runtime.manus_requires_calibration:
+                            candidate_runtime.optimizer.set_calibration(calibration)
                 candidate_debug = MuJoCoDebugWorker(context.hand_side, candidate_runtime.debug_mjcf_path)
                 candidate_debug.start()
             except Exception as exc:
@@ -939,10 +940,8 @@ def _run_gui(args: argparse.Namespace) -> int:
                 layout.addWidget(warning)
             if specs[0].group == "15 条目标向量":
                 layout.addWidget(self._create_calibration_controls())
-            if specs[0].group == "MANUS 全骨架":
+            if specs[0].group in {"MANUS 全骨架", "MANUS Ergonomics Hybrid"}:
                 layout.addWidget(self._create_manus_calibration_controls())
-            if specs[0].group == "MANUS Ergonomics Hybrid":
-                layout.addWidget(self._create_hybrid_calibration_controls())
             for spec in specs:
                 layout.addWidget(self._create_control(spec))
             layout.addStretch(1)
@@ -966,14 +965,15 @@ def _run_gui(args: argparse.Namespace) -> int:
             return group
 
         def _create_manus_calibration_controls(self) -> QtWidgets.QGroupBox:
-            group = QtWidgets.QGroupBox("MANUS→LDJY 中立姿态标定")
+            group = QtWidgets.QGroupBox("MANUS→LDJY 共用零位标定")
             layout = QtWidgets.QVBoxLayout(group)
             instructions = QtWidgets.QLabel(
-                "已有标定会按手套 ID 和手侧自动载入；仅在更换手套、拓扑改变或要重设中立姿态时重新采集。"
+                "请按检测区参考图把手平放在桌上，摆成与 LDJY 零位一致的自然张开姿势。"
+                "同一次采集会保存 Raw Full 空间对齐和 Ergonomics 零位；已有标定会按手套 ID、手侧自动载入。"
             )
             instructions.setWordWrap(True)
             layout.addWidget(instructions)
-            self.manus_calibration_button = QtWidgets.QPushButton("重新采集 MANUS 中立姿态")
+            self.manus_calibration_button = QtWidgets.QPushButton("采集 LDJY 共用零位")
             self.manus_calibration_button.clicked.connect(self._start_manus_calibration)
             layout.addWidget(self.manus_calibration_button)
             state = "已加载标定" if self.runtime is not None and self.runtime.manus_calibrated else "等待自动载入已有标定"
@@ -981,58 +981,22 @@ def _run_gui(args: argparse.Namespace) -> int:
             layout.addWidget(self.manus_calibration_status)
             return group
 
-        def _create_hybrid_calibration_controls(self) -> QtWidgets.QGroupBox:
-            group = QtWidgets.QGroupBox("MANUS Ergonomics Hybrid 一次标定")
-            layout = QtWidgets.QVBoxLayout(group)
-            label = QtWidgets.QLabel("依次采集：张手、最大张开、握拳、拇指捏食/中/无名/小指。每步保持约 1 秒；保存后会自动加载。")
-            label.setWordWrap(True); layout.addWidget(label)
-            self.hybrid_calibration_button = QtWidgets.QPushButton("开始采集扩展标定")
-            self.hybrid_calibration_button.clicked.connect(self._start_hybrid_calibration)
-            layout.addWidget(self.hybrid_calibration_button)
-            state = "已加载标定" if self.runtime is not None and self.runtime.manus_calibrated else "尚未标定"
-            self.hybrid_calibration_status = QtWidgets.QLabel(state); self.hybrid_calibration_status.setWordWrap(True)
-            layout.addWidget(self.hybrid_calibration_status)
-            return group
-
-        def _start_hybrid_calibration(self) -> None:
-            if self.runtime is None or self.algorithm_key != "manus_ergonomics_hybrid":
+        def _show_manus_zero_pose_reference(self, visible: bool) -> None:
+            if visible:
+                pixmap = QtGui.QPixmap(str(LDJY_ZERO_POSE_IMAGE))
+                if pixmap.isNull():
+                    self.status_label.setText(f"无法加载零位参考图: {LDJY_ZERO_POSE_IMAGE}")
+                    return
+                self.preview_title.setText("LDJY 零位参考（正在采集 MANUS 共用零位）")
+                self.preview_label.setText("")
+                self.preview_label.setPixmap(pixmap.scaled(
+                    self.preview_label.size(), QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                    QtCore.Qt.TransformationMode.SmoothTransformation,
+                ))
                 return
-            sequence = ("open", "spread", "fist", "pinch_finger1", "pinch_finger2", "pinch_finger3", "pinch_finger4")
-            next_index = len(self._hybrid_calibration_poses)
-            if next_index >= len(sequence):
-                self._hybrid_calibration_poses = {}; next_index = 0
-            self._hybrid_calibration_name = sequence[next_index]
-            self._hybrid_calibration_started_at = time.monotonic()
-            self.hybrid_calibration_button.setEnabled(False)
-            self.hybrid_calibration_status.setText(f"采集 {self._hybrid_calibration_name}: 0 / 50")
-
-        def _capture_hybrid_calibration_frame(self, frame: Any) -> None:
-            if self._hybrid_calibration_name is None:
-                return
-            samples = self._hybrid_calibration_poses.setdefault(self._hybrid_calibration_name, [])
-            if samples and frame.sdk_timestamp == samples[-1].sdk_timestamp:
-                return
-            if frame.ergonomics_valid:
-                samples.append(frame)
-            elapsed = time.monotonic() - self._hybrid_calibration_started_at
-            self.hybrid_calibration_status.setText(f"采集 {self._hybrid_calibration_name}: {len(samples)} / 50（{elapsed:.1f} s）")
-            if elapsed < 1.0 or len(samples) < 50:
-                return
-            self._hybrid_calibration_name = None; self._hybrid_calibration_started_at = None
-            if len(self._hybrid_calibration_poses) < 7:
-                self.hybrid_calibration_button.setEnabled(True)
-                self.hybrid_calibration_button.setText("下一姿态")
-                self.hybrid_calibration_status.setText("本步完成；摆好下一姿态后点击“下一姿态”。")
-                return
-            try:
-                path = self.runtime.calibrate_manus_ergonomics(
-                    self._hybrid_calibration_poses, sdk_version=getattr(self.device, "sdk_version", "recorded"))
-                message = f"Ergonomics Hybrid 标定成功: {path}"
-            except Exception as exc:
-                message = f"Ergonomics Hybrid 标定失败: {exc}"
-            self._hybrid_calibration_poses = {}; self.hybrid_calibration_button.setEnabled(True)
-            self.hybrid_calibration_button.setText("重新采集扩展标定")
-            self.hybrid_calibration_status.setText(message); self.status_label.setText(message)
+            self.preview_title.setText("MANUS Raw Skeleton（无视频预览）")
+            self.preview_label.setPixmap(QtGui.QPixmap())
+            self.preview_label.setText("MANUS 零位参考图已关闭；等待 Raw Skeleton 数据...")
 
         def _start_manus_calibration(self) -> None:
             if self.runtime is None or self.input_device_type != "manus":
@@ -1041,7 +1005,8 @@ def _run_gui(args: argparse.Namespace) -> int:
             self._manus_calibration_frames = []
             self._manus_calibration_started_at = time.monotonic()
             self.manus_calibration_button.setEnabled(False)
-            self.manus_calibration_status.setText("采集中: 0 / 50（0.0 / 2.0 s）")
+            self.manus_calibration_status.setText("请按检测区参考图平放自然张开。采集中: 0 / 50（0.0 / 2.0 s）")
+            self._show_manus_zero_pose_reference(True)
 
         def _capture_manus_calibration_frame(self, frame: Any) -> None:
             if self._manus_calibration_started_at is None:
@@ -1064,6 +1029,7 @@ def _run_gui(args: argparse.Namespace) -> int:
             self._manus_calibration_frames = []
             self._manus_calibration_started_at = None
             self.manus_calibration_button.setEnabled(True)
+            self._show_manus_zero_pose_reference(False)
             self.manus_calibration_status.setText(message)
             self.status_label.setText(message)
 
@@ -1282,10 +1248,12 @@ def _run_gui(args: argparse.Namespace) -> int:
             else:
                 self._record_writer = ManusRecordWriter.start(
                     TUNING_RECORDS_ROOT, hand_side=self.context.hand_side,
-                    calibration=(getattr(self.runtime.optimizer, "calibration", None)
-                                 if self.algorithm_key == "manus_full_skeleton" else None),
-                    hybrid_calibration=(getattr(self.runtime.optimizer, "calibration", None)
-                                        if self.algorithm_key == "manus_ergonomics_hybrid" else None),
+                    calibration=(
+                        getattr(self.runtime.optimizer, "calibration", None)
+                        if self.algorithm_key == "manus_full_skeleton"
+                        else getattr(self.runtime.optimizer, "raw_calibration", None)
+                        if self.algorithm_key == "manus_ergonomics_hybrid" else None
+                    ),
                     config=self.session.config,
                 )
             self.status_label.setText(f"正在记录: {self._record_writer._final_path.name}")
@@ -1539,7 +1507,14 @@ def _run_gui(args: argparse.Namespace) -> int:
                     latest = self.replay.input_at(self.replay.current_index)
                     ergo = f"Ergo: {len(latest.ergonomics)}" if latest.ergonomics_valid else "Ergo: invalid"
                 solve_ms = self.runtime.optimizer.last_diagnostics.get("solve_ms", 0.0)
-                calibrated = "已标定" if self.runtime.manus_calibrated else "未标定"
+                calibrated = (
+                    "官方 Ergonomics 直连 + Raw Full 对齐已加载"
+                    if self.algorithm_key == "manus_ergonomics_hybrid"
+                    and self.runtime.manus_calibrated else
+                    "等待自动加载 Raw Full 对齐"
+                    if self.algorithm_key == "manus_ergonomics_hybrid" else
+                    ("已标定" if self.runtime.manus_calibrated else "未标定")
+                )
                 self.camera_status.setText(
                     f"{source} | {ergo} | GUI: {self._fps:.1f} FPS | 求解: {solve_ms:.1f} ms | {calibrated}"
                 )
@@ -1588,9 +1563,7 @@ def _run_gui(args: argparse.Namespace) -> int:
                 return
             try:
                 if self.algorithm_key in {"manus_full_skeleton", "manus_ergonomics_hybrid"}:
-                    if self.algorithm_key == "manus_ergonomics_hybrid":
-                        self._capture_hybrid_calibration_frame(fingers)
-                    elif self.runtime.manus_requires_calibration:
+                    if self._manus_calibration_started_at is not None:
                         self._capture_manus_calibration_frame(fingers)
                     qpos, diagnostics = self.runtime.process_manus(fingers)
                 elif self.algorithm_key == "mano_pad_pose_wilor":

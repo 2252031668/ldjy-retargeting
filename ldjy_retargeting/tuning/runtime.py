@@ -90,7 +90,7 @@ class TuningRuntime:
             self._pad_filter = None
             self._is_mano_pad = False
             self._is_manus = True
-            self._manus_requires_calibration = True
+            self._manus_requires_calibration = False
             self._manus_hybrid = True
         elif optimizer_type == "ManoPadPoseOptimizer":
             from example.mano_viewer import (
@@ -222,14 +222,21 @@ class TuningRuntime:
     def process_manus(self, frame: Any) -> tuple[np.ndarray, dict[str, Any]]:
         if not self._is_manus:
             raise RuntimeError("当前算法不是 MANUS Skeleton 算法")
-        if self._manus_requires_calibration and self.optimizer.calibration is None:
-            path = (self.manus_ergonomics_calibration_path(frame.glove_id, frame.side)
-                    if self._manus_hybrid else self.manus_calibration_path(frame.glove_id, frame.side))
+        if self._manus_hybrid and self.optimizer.raw_calibration is None:
+            from ldjy_retargeting.manus import ManusCalibration
+            path = self.manus_calibration_path(frame.glove_id, frame.side)
+            if not path.is_file():
+                raise RuntimeError("Hybrid 需要 Raw Full 中立标定；请先用 MANUS Full Skeleton 采集一次中立姿态")
+            calibration = ManusCalibration.load(path)
+            if not calibration.matches(frame):
+                raise ValueError("已保存的 MANUS Raw Full 标定与当前手套/拓扑不匹配")
+            self.optimizer.set_raw_calibration(calibration)
+        elif self._manus_requires_calibration and self.optimizer.calibration is None:
+            from ldjy_retargeting.manus import ManusCalibration
+            path = self.manus_calibration_path(frame.glove_id, frame.side)
             if path.is_file():
-                from ldjy_retargeting.manus import ManusCalibration, ManusErgonomicsCalibration
-                calibration = (ManusErgonomicsCalibration if self._manus_hybrid else ManusCalibration).load(path)
-                matches = calibration.matches(frame, self.optimizer.urdf_fingerprint) if self._manus_hybrid else calibration.matches(frame)
-                if not matches:
+                calibration = ManusCalibration.load(path)
+                if not calibration.matches(frame):
                     raise ValueError("已保存的 MANUS 标定与当前手套/拓扑不匹配")
                 self.optimizer.set_calibration(calibration)
         return self.optimizer.solve(frame)
@@ -238,24 +245,21 @@ class TuningRuntime:
     def manus_calibration_path(glove_id: int, side: str) -> Path:
         return Path(__file__).resolve().parents[2] / "outputs" / "manus_calibrations" / f"{glove_id}_{side}.npz"
 
-    @staticmethod
-    def manus_ergonomics_calibration_path(glove_id: int, side: str) -> Path:
-        return Path(__file__).resolve().parents[2] / "outputs" / "manus_ergonomics_calibrations" / f"{glove_id}_{side}.npz"
-
     def calibrate_manus(self, frames: list[Any], *, sdk_version: str = "unknown") -> Path:
-        if not self._manus_requires_calibration:
-            raise RuntimeError("当前算法不是 MANUS Full Skeleton")
-        calibration = self.optimizer.calibrate(frames, sdk_version=sdk_version)
+        if self._manus_hybrid:
+            from ldjy_retargeting.manus import ManusFullSkeletonRetargeter
+            calibration = ManusFullSkeletonRetargeter(self._config).calibrate(frames, sdk_version=sdk_version)
+            self.optimizer.set_raw_calibration(calibration)
+        elif self._manus_requires_calibration:
+            calibration = self.optimizer.calibrate(frames, sdk_version=sdk_version)
+        else:
+            raise RuntimeError("当前算法不支持 MANUS 共用零位标定")
         return calibration.save(self.manus_calibration_path(calibration.glove_id, calibration.side))
-
-    def calibrate_manus_ergonomics(self, poses: dict[str, list[Any]], *, sdk_version: str = "unknown") -> Path:
-        if not self._manus_hybrid:
-            raise RuntimeError("当前算法不是 MANUS Ergonomics Hybrid")
-        calibration = self.optimizer.calibrate(poses, sdk_version=sdk_version)
-        return calibration.save(self.manus_ergonomics_calibration_path(calibration.glove_id, calibration.side))
 
     @property
     def manus_calibrated(self) -> bool:
+        if self._manus_hybrid:
+            return self.optimizer.raw_calibration is not None
         return self._is_manus and (not self._manus_requires_calibration or self.optimizer.calibration is not None)
 
     @property
